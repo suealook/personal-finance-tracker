@@ -259,14 +259,39 @@ def create_app() -> Flask:
                     sheets_client.upsert_planned(month, category, amount)
             return redirect(url_for("budgets", month=month))
 
-        active_categories = categories_module.get_active_categories()
+        active_records = categories_module.get_active_category_records()
         planned_rows = {r["Category"]: r["PlannedAmount"] for r in sheets_client.get_planned(month)}
+
+        groups: dict[str, list[dict]] = {}
+        group_order: list[str] = []
+        ungrouped: list[dict] = []
+        for c in active_records:
+            group = c.get("Group") or ""
+            if not group:
+                ungrouped.append(c)
+                continue
+            if group not in groups:
+                groups[group] = []
+                group_order.append(group)
+            groups[group].append(c)
+
+        budget_groups = []
+        for group in group_order:
+            members = groups[group]
+            type_counts: dict[str, int] = {}
+            for c in members:
+                type_counts[c["Type"]] = type_counts.get(c["Type"], 0) + 1
+            dominant_type = max(type_counts, key=type_counts.get)
+            budget_groups.append({"name": group, "categories": members, "default_type": dominant_type})
+
         return render_template(
             "budgets.html",
             month=month,
-            categories=active_categories,
+            budget_groups=budget_groups,
+            ungrouped=ungrouped,
             planned=planned_rows,
             prev_month=previous_month(month),
+            category_types=categories_module.VALID_TYPES,
         )
 
     @app.route("/budgets/copy_previous", methods=["POST"])
@@ -277,6 +302,22 @@ def create_app() -> Flask:
             amount = float(row.get("PlannedAmount") or 0)
             sheets_client.upsert_planned(month, row["Category"], amount, row.get("Notes", ""))
         return redirect(url_for("budgets", month=month))
+
+    @app.route("/categories/rename", methods=["POST"])
+    def categories_rename():
+        old_name = request.form.get("old_name", "")
+        new_name = request.form.get("new_name", "")
+        if old_name and new_name:
+            try:
+                categories_module.rename_category(old_name, new_name)
+            except ValueError:
+                pass
+        # Rename can be submitted from either the budgets or categories page;
+        # return to whichever it came from. Only trust a same-origin referrer.
+        referrer = request.referrer or ""
+        if referrer.startswith(request.host_url):
+            return redirect(referrer)
+        return redirect(url_for("categories_page"))
 
     @app.route("/categories")
     def categories_page():

@@ -250,6 +250,18 @@ def update_category(
     invalidate_category_cache()
 
 
+def rename_category(old_name: str, new_name: str):
+    """Renames the category going forward only — existing Planned/Actual/RawLog
+    rows keep the old name text (they're not rewritten), same "history is
+    preserved as-is" principle as delete_category_row below."""
+    tab = SheetTab(TAB_CATEGORIES)
+    row = tab.find_row_index(lambda r: r.get("Category") == old_name)
+    if row is None:
+        raise ValueError(f"Category {old_name!r} not found")
+    tab.update_cell(row, "Category", new_name)
+    invalidate_category_cache()
+
+
 def set_category_sort_order(name: str, sort_order: int):
     tab = SheetTab(TAB_CATEGORIES)
     row = tab.find_row_index(lambda r: r.get("Category") == name)

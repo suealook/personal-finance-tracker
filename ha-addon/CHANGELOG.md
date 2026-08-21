@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.1 — bottom-up sub-category budgets
+
+- `/budgets` now clusters categories under their existing `Group` tag (the
+  same field that already powers the dashboard's group rollup), with a
+  live, client-side bottom-up total per group that updates as you type or
+  use the inline calculator.
+- Each group gets an inline "+ Add" quick-form (pre-filled with that
+  group's dominant Type) and a per-row remove button, both reusing the
+  existing add/deactivate routes — no new category-management logic.
+- New capability that didn't exist anywhere before: renaming a category
+  (`common/categories.py::rename_category`, `POST /categories/rename`).
+  Like removing a category, it only affects new activity going forward —
+  existing Planned/Actual/RawLog rows keep the old name text.
+
 ## 0.4.0 — five convenience features
 
 - **Receipt photo logging**: send the bot a photo of a receipt (with or

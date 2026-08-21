@@ -46,6 +46,23 @@ def rename_or_retype_category(
     sheets_client.update_category(name, new_type=new_type, new_notes=new_notes, new_group=new_group)
 
 
+def rename_category(old_name: str, new_name: str):
+    """Changes the category's own name (distinct from rename_or_retype_category
+    above, which only touches type/notes/group). Existing Planned/Actual/RawLog
+    rows keep showing the old name — same "history isn't rewritten" principle
+    as remove_category."""
+    old_name = old_name.strip()
+    new_name = new_name.strip()
+    if not new_name:
+        raise ValueError("New name can't be empty")
+    if new_name.lower() == old_name.lower():
+        return
+    existing = {r["Category"].lower() for r in get_all_categories()}
+    if new_name.lower() in existing:
+        raise ValueError(f"Category {new_name!r} already exists")
+    sheets_client.rename_category(old_name, new_name)
+
+
 def deactivate_category(name: str):
     sheets_client.set_category_active(name, active=False)
 

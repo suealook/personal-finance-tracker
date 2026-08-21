@@ -255,6 +255,25 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 
 .empty-state { color: var(--muted); font-size: 0.9rem; padding: 0.5rem 0; }
 
+/* Budget groups: bottom-up sub-category clusters on the budgets page */
+.budget-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+.budget-group-header h2 { margin: 0; }
+.budget-group-total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-size: 1.05rem;
+  color: var(--accent);
+}
+.rename-input { width: 150px; margin-right: 0.3rem; }
+.budget-quick-add { display: flex; gap: 0.4rem; margin-top: 0.9rem; flex-wrap: wrap; }
+.budget-quick-add input[type="text"] { flex: 1; min-width: 160px; }
+
 /* Inline calculator, used on the budgets page */
 .calc { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 .calc-input { width: 92px; }
