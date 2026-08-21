@@ -294,6 +294,86 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---- Toasts ----------------------------------------------------------------
+   Site-wide feedback for every Save/Add/Delete action. #toast-stack lives in
+   base.html so every page gets it for free. A form submit shows "processing"
+   immediately (see base.html script) and stays up for as long as the actual
+   page navigation takes — no AJAX rewrite needed, since the browser keeps
+   rendering the current page, toast included, until the next one is ready.
+   The destination page then reads ?status=&message= off its own URL (added
+   by every mutating route's _status_redirect) and shows the real outcome. */
+#toast-stack {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: min(360px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.8rem 0.95rem;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  font-size: 0.88rem;
+  color: var(--text);
+  animation: toast-in 0.22s ease;
+  pointer-events: auto;
+}
+.toast.leaving { animation: toast-out 0.18s ease forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(16px); } }
+.toast-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.toast.success .toast-icon { background: color-mix(in srgb, var(--status-good) 22%, transparent); color: var(--status-good); }
+.toast.error .toast-icon { background: color-mix(in srgb, var(--status-critical) 22%, transparent); color: var(--status-critical); }
+.toast.processing .toast-icon { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.toast-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.toast-message { flex: 1; line-height: 1.35; padding-top: 1px; }
+.toast-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0 0 0 0.4rem;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+.toast-close:hover { color: var(--text); }
+@media (prefers-reduced-motion: reduce) {
+  .toast, .toast.leaving { animation: none; }
+}
+@media (max-width: 640px) {
+  #toast-stack { left: 1rem; right: 1rem; max-width: none; top: 0.75rem; }
+}
+
 @media (max-width: 640px) {
   main { padding: 0 0.75rem 2rem; }
   nav { flex-wrap: wrap; gap: 0.85rem; border-radius: 20px; }
@@ -379,9 +459,20 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 .categories-table th:nth-child(6) { width: 19%; }
 .categories-table th:nth-child(7) { width: 15%; }
 
-.budgets-table th:nth-child(1) { width: 26%; }
-.budgets-table th:nth-child(2) { width: 24%; }
-.budgets-table th:nth-child(3) { width: 50%; }
+.budgets-table th:nth-child(1) { width: 22%; }
+.budgets-table th:nth-child(2) { width: 18%; }
+.budgets-table th:nth-child(3) { width: 15%; }
+.budgets-table th:nth-child(4) { width: 45%; }
+
+.budget-section { margin-bottom: 1.75rem; }
+.budget-section h2 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 0.6rem;
+}
+.budget-section-total { font-size: 0.9rem; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--muted); }
 
 .control-cluster { display: flex; align-items: center; gap: 0.5rem; }
 .reorder-group { display: inline-flex; flex-direction: column; gap: 2px; }
@@ -426,7 +517,9 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
   border-radius: 999px;
   cursor: pointer;
 }
-.type-select.type-expense { background: color-mix(in srgb, var(--series-1) 20%, var(--panel-strong)); color: var(--series-1); }
+.type-select.type-expense,
+.type-select.type-fixed-expense { background: color-mix(in srgb, var(--series-1) 20%, var(--panel-strong)); color: var(--series-1); }
+.type-select.type-variable-expense { background: color-mix(in srgb, var(--series-2) 20%, var(--panel-strong)); color: var(--series-2); }
 .type-select.type-income { background: color-mix(in srgb, var(--status-good) 20%, var(--panel-strong)); color: var(--status-good); }
 .type-select.type-savings { background: color-mix(in srgb, var(--series-7) 20%, var(--panel-strong)); color: var(--series-7); }
 .type-select.type-debt { background: color-mix(in srgb, var(--status-critical) 20%, var(--panel-strong)); color: var(--status-critical); }
@@ -448,6 +541,7 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 .status-pill.status-active:hover { background: color-mix(in srgb, var(--status-good) 28%, var(--panel-strong)); }
 .status-pill.status-inactive { background: color-mix(in srgb, var(--muted) 18%, var(--panel-strong)); color: var(--muted); }
 .status-pill.status-inactive:hover { background: color-mix(in srgb, var(--muted) 30%, var(--panel-strong)); }
+.status-pill.readonly { cursor: default; }
 
 .save-btn { opacity: 0.4; background: var(--panel-strong); color: var(--muted); box-shadow: none; }
 .save-btn.dirty { opacity: 1; background: var(--accent); color: white; }

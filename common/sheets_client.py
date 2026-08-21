@@ -170,6 +170,15 @@ class SheetTab:
     def delete_row(self, row_index: int):
         self.ws.delete_rows(row_index)
 
+    @_retryable
+    def batch_update_cells(self, cells: list["gspread.Cell"]):
+        self.ws.update_cells(cells, value_input_option="USER_ENTERED")
+
+    @_retryable
+    def append_rows(self, rows: list[dict]):
+        values = [[_sanitize_cell(row_dict.get(col, "")) for col in self._header] for row_dict in rows]
+        self.ws.append_rows(values, value_input_option="USER_ENTERED")
+
 
 # ---------------------------------------------------------------------------
 # Categories
@@ -301,6 +310,65 @@ def upsert_planned(month: str, category: str, amount: float, notes: str = ""):
         tab.update_cell(row, "PlannedAmount", amount)
         if notes:
             tab.update_cell(row, "Notes", notes)
+
+
+def upsert_planned_batch(month: str, amounts: dict, notes: Optional[dict] = None):
+    """Batched version of upsert_planned for writing many categories' planned
+    amounts at once. One read plus one batched cell-update call for existing
+    rows and one batched append call for new rows — a fixed 2-3 API calls
+    regardless of category count, instead of one read+write round trip per
+    category (what made a /budgets save with N categories cost ~2N
+    sequential Sheets API calls, the actual reason Save was slow)."""
+    if not amounts:
+        return
+    notes = notes or {}
+    tab = SheetTab(TAB_PLANNED)
+    existing = tab.all_records()
+    row_by_category = {
+        r["Category"]: i + 2
+        for i, r in enumerate(existing)
+        if r.get("Month") == month
+    }
+    amount_col = tab._header.index("PlannedAmount") + 1
+    notes_col = tab._header.index("Notes") + 1
+
+    cells = []
+    new_rows = []
+    for category, amount in amounts.items():
+        row_index = row_by_category.get(category)
+        note = notes.get(category, "")
+        if row_index is not None:
+            cells.append(gspread.Cell(row_index, amount_col, amount))
+            if note:
+                cells.append(gspread.Cell(row_index, notes_col, _sanitize_cell(note)))
+        else:
+            new_rows.append({"Month": month, "Category": category, "PlannedAmount": amount, "Notes": note})
+
+    if cells:
+        tab.batch_update_cells(cells)
+    if new_rows:
+        tab.append_rows(new_rows)
+
+
+def update_categories_batch(group_changes: dict):
+    """Batched version of update_category's Group-only path. One read of the
+    Categories tab plus one batched cell-update call, instead of a
+    read+write round trip per changed category."""
+    if not group_changes:
+        return
+    tab = SheetTab(TAB_CATEGORIES)
+    existing = tab.all_records()
+    row_by_category = {r["Category"]: i + 2 for i, r in enumerate(existing)}
+    col_index = tab._header.index("Group") + 1
+
+    cells = [
+        gspread.Cell(row_by_category[category], col_index, _sanitize_cell(new_group))
+        for category, new_group in group_changes.items()
+        if category in row_by_category
+    ]
+    if cells:
+        tab.batch_update_cells(cells)
+    invalidate_category_cache()
 
 
 # ---------------------------------------------------------------------------

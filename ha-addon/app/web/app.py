@@ -79,6 +79,42 @@ def _income_and_spend(txns: list[dict], cat_types: dict[str, str]) -> tuple[floa
     return income, spend
 
 
+def _status_redirect(endpoint: str, message: str, status: str = "success", **url_kwargs):
+    """Redirect carrying a status+message for the site-wide toast (base.html)
+    to show once the destination page loads. Every mutating route (Save,
+    Add, Delete, ...) should return through this instead of a bare
+    redirect(), so the user always gets a clear success/failure signal
+    instead of a silent page refresh."""
+    return redirect(url_for(endpoint, status=status, message=message, **url_kwargs))
+
+
+def _build_budget_sections(active_records: list[dict], planned_rows: dict[str, float]) -> list[dict]:
+    """Groups active categories by Type into the Budgets page's sections, each
+    with its own planned-amount total. Category order within a section
+    follows the existing priority order from the Categories page.
+
+    Groups by whatever Type values actually appear on active categories,
+    rather than a fixed 4-value list — the live sheet can (and does) carry
+    Type strings the add/edit forms' dropdown doesn't offer (e.g. "Variable
+    Expense" / "Fixed Expense" instead of "Expense"), and a fixed list would
+    silently drop every category with an unrecognized Type off the page
+    entirely. Income sorts first since it's the inflow section everything
+    else is budgeted against; the rest sort alphabetically after it."""
+    by_type: dict[str, list[dict]] = {}
+    for c in active_records:
+        by_type.setdefault(c.get("Type") or "Other", []).append(c)
+
+    def section_order(type_name: str):
+        return (0, "") if type_name == "Income" else (1, type_name)
+
+    sections = []
+    for type_name in sorted(by_type, key=section_order):
+        cats = by_type[type_name]
+        total = sum(float(planned_rows.get(c["Category"], 0) or 0) for c in cats)
+        sections.append({"type": type_name, "categories": cats, "total": total})
+    return sections
+
+
 def _delta_class(delta: float, up_is_good: bool) -> str:
     if delta == 0:
         return "neutral"
@@ -250,44 +286,70 @@ def create_app() -> Flask:
         month = request.args.get("month") or request.form.get("month") or current_month()
         if request.method == "POST":
             active_records = categories_module.get_active_category_records()
+            amounts = {}
+            group_changes = {}
             for c in active_records:
                 category = c["Category"]
 
                 amount_field = f"amount_{category}"
                 if amount_field in request.form and request.form[amount_field].strip() != "":
                     try:
-                        amount = float(request.form[amount_field])
+                        amounts[category] = float(request.form[amount_field])
                     except ValueError:
                         pass
-                    else:
-                        sheets_client.upsert_planned(month, category, amount)
 
                 group_field = f"group_{category}"
                 if group_field in request.form:
                     new_group = request.form[group_field].strip()
                     if new_group != (c.get("Group") or ""):
-                        categories_module.rename_or_retype_category(category, new_group=new_group)
+                        group_changes[category] = new_group
 
-            return redirect(url_for("budgets", month=month))
+            try:
+                sheets_client.upsert_planned_batch(month, amounts)
+                categories_module.set_groups_batch(group_changes)
+            except Exception:
+                app.logger.exception("budgets save failed for month=%s", month)
+                return _status_redirect(
+                    "budgets", "Could not save budgets — please try again.", status="error", month=month
+                )
+
+            return _status_redirect("budgets", f"Budgets saved for {month}.", month=month)
 
         active_records = categories_module.get_active_category_records()
         planned_rows = {r["Category"]: r["PlannedAmount"] for r in sheets_client.get_planned(month)}
+        sections = _build_budget_sections(active_records, planned_rows)
+
+        income_total = next((s["total"] for s in sections if s["type"] == "Income"), 0.0)
+        outflow_total = sum(s["total"] for s in sections if s["type"] != "Income")
+
         return render_template(
             "budgets.html",
             month=month,
-            categories=active_records,
+            sections=sections,
             planned=planned_rows,
             prev_month=previous_month(month),
+            income_total=income_total,
+            outflow_total=outflow_total,
+            net_planned=income_total - outflow_total,
         )
 
     @app.route("/budgets/copy_previous", methods=["POST"])
     def budgets_copy_previous():
         month = request.form.get("month", current_month())
         prev = previous_month(month)
-        for row in sheets_client.get_planned(prev):
-            amount = float(row.get("PlannedAmount") or 0)
-            sheets_client.upsert_planned(month, row["Category"], amount, row.get("Notes", ""))
-        return redirect(url_for("budgets", month=month))
+        try:
+            prev_rows = sheets_client.get_planned(prev)
+            amounts = {row["Category"]: float(row.get("PlannedAmount") or 0) for row in prev_rows}
+            notes = {row["Category"]: row.get("Notes", "") for row in prev_rows if row.get("Notes")}
+            sheets_client.upsert_planned_batch(month, amounts, notes)
+        except Exception:
+            app.logger.exception("budgets_copy_previous failed for month=%s", month)
+            return _status_redirect(
+                "budgets", "Could not copy last month's budgets — please try again.", status="error", month=month
+            )
+        if not amounts:
+            return _status_redirect("budgets", f"{prev} has no budgets to copy.", status="error", month=month)
+        return _status_redirect("budgets", f"Copied {prev}'s budgets into {month}.", month=month)
 
     @app.route("/categories")
     def categories_page():
@@ -299,12 +361,16 @@ def create_app() -> Flask:
         type_ = request.form.get("type", "Expense")
         notes = request.form.get("notes", "")
         group = request.form.get("group", "")
-        if name:
-            try:
-                categories_module.add_category(name, type_, notes, group)
-            except ValueError:
-                pass
-        return redirect(url_for("categories_page"))
+        if not name:
+            return _status_redirect("categories_page", "Category name is required.", status="error")
+        try:
+            categories_module.add_category(name, type_, notes, group)
+        except ValueError as e:
+            return _status_redirect("categories_page", str(e), status="error")
+        except Exception:
+            app.logger.exception("categories_add failed for name=%s", name)
+            return _status_redirect("categories_page", "Could not add the category — please try again.", status="error")
+        return _status_redirect("categories_page", f'Added "{name}".')
 
     @app.route("/categories/edit", methods=["POST"])
     def categories_edit():
@@ -313,68 +379,107 @@ def create_app() -> Flask:
         type_ = request.form.get("type") or None
         notes = request.form.get("notes")
         group = request.form.get("group")
-        if name:
+        if not name:
+            return _status_redirect("categories_page", "No category specified.", status="error")
+        try:
             if new_name and new_name != name:
-                try:
-                    categories_module.rename_category(name, new_name)
-                    name = new_name  # subsequent updates target the row under its new name
-                except ValueError:
-                    pass  # duplicate/invalid name -- keep old name, other fields still apply below
+                categories_module.rename_category(name, new_name)
+                name = new_name  # subsequent updates target the row under its new name
             categories_module.rename_or_retype_category(
                 name, new_type=type_, new_notes=notes, new_group=group
             )
-        return redirect(url_for("categories_page"))
+        except ValueError as e:
+            return _status_redirect("categories_page", str(e), status="error")
+        except Exception:
+            app.logger.exception("categories_edit failed for name=%s", name)
+            return _status_redirect("categories_page", "Could not save changes — please try again.", status="error")
+        return _status_redirect("categories_page", f'Saved "{name}".')
 
     @app.route("/categories/move_up", methods=["POST"])
     def categories_move_up():
         name = request.form.get("name", "")
-        if name:
+        if not name:
+            return _status_redirect("categories_page", "No category specified.", status="error")
+        try:
             categories_module.move_category(name, "up")
-        return redirect(url_for("categories_page"))
+        except Exception:
+            app.logger.exception("categories_move_up failed for name=%s", name)
+            return _status_redirect("categories_page", "Could not reorder — please try again.", status="error")
+        return _status_redirect("categories_page", f'Moved "{name}" up.')
 
     @app.route("/categories/move_down", methods=["POST"])
     def categories_move_down():
         name = request.form.get("name", "")
-        if name:
+        if not name:
+            return _status_redirect("categories_page", "No category specified.", status="error")
+        try:
             categories_module.move_category(name, "down")
-        return redirect(url_for("categories_page"))
+        except Exception:
+            app.logger.exception("categories_move_down failed for name=%s", name)
+            return _status_redirect("categories_page", "Could not reorder — please try again.", status="error")
+        return _status_redirect("categories_page", f'Moved "{name}" down.')
 
     @app.route("/categories/delete", methods=["POST"])
     def categories_delete():
         name = request.form.get("name", "")
-        if name:
+        if not name:
+            return _status_redirect("categories_page", "No category specified.", status="error")
+        try:
             categories_module.deactivate_category(name)
-        return redirect(url_for("categories_page"))
+        except Exception:
+            app.logger.exception("categories_delete failed for name=%s", name)
+            return _status_redirect("categories_page", "Could not deactivate — please try again.", status="error")
+        return _status_redirect("categories_page", f'Deactivated "{name}".')
 
     @app.route("/categories/activate", methods=["POST"])
     def categories_activate():
         name = request.form.get("name", "")
-        if name:
+        if not name:
+            return _status_redirect("categories_page", "No category specified.", status="error")
+        try:
             categories_module.activate_category(name)
-        return redirect(url_for("categories_page"))
+        except Exception:
+            app.logger.exception("categories_activate failed for name=%s", name)
+            return _status_redirect("categories_page", "Could not activate — please try again.", status="error")
+        return _status_redirect("categories_page", f'Activated "{name}".')
 
     @app.route("/categories/remove", methods=["POST"])
     def categories_remove():
         name = request.form.get("name", "")
-        if name:
+        if not name:
+            return _status_redirect("categories_page", "No category specified.", status="error")
+        try:
             categories_module.remove_category(name)
-        return redirect(url_for("categories_page"))
+        except Exception:
+            app.logger.exception("categories_remove failed for name=%s", name)
+            return _status_redirect("categories_page", "Could not remove — please try again.", status="error")
+        return _status_redirect("categories_page", f'Removed "{name}" permanently.')
 
     @app.route("/categories/bulk_delete", methods=["POST"])
     def categories_bulk_delete():
         names = request.form.getlist("category_names")
         by_name = {c["Category"]: c for c in categories_module.get_all_categories()}
-        for name in names:
-            cat = by_name.get(name)
-            if not cat:
-                continue
-            # Same rule as the single-row buttons: active -> deactivate (soft,
-            # reversible), already-inactive -> permanently remove.
-            if str(cat.get("Active", "")).strip().upper() == "TRUE":
-                categories_module.deactivate_category(name)
-            else:
-                categories_module.remove_category(name)
-        return redirect(url_for("categories_page"))
+        count = 0
+        try:
+            for name in names:
+                cat = by_name.get(name)
+                if not cat:
+                    continue
+                # Same rule as the single-row buttons: active -> deactivate (soft,
+                # reversible), already-inactive -> permanently remove.
+                if str(cat.get("Active", "")).strip().upper() == "TRUE":
+                    categories_module.deactivate_category(name)
+                else:
+                    categories_module.remove_category(name)
+                count += 1
+        except Exception:
+            app.logger.exception("categories_bulk_delete failed")
+            return _status_redirect(
+                "categories_page", f"Deleted {count} of {len(names)} before an error occurred.", status="error"
+            )
+        if count == 0:
+            return _status_redirect("categories_page", "No categories selected.", status="error")
+        return _status_redirect("categories_page", f"Deleted {count} categor{'y' if count == 1 else 'ies'}.")
 
     @app.route("/reports")
     def reports_page():
@@ -384,9 +489,21 @@ def create_app() -> Flask:
     @app.route("/reports/generate", methods=["POST"])
     def reports_generate():
         month = request.form.get("month", current_month())
-        if not _llm_rate_limited(f"report:{month}"):
+        if _llm_rate_limited(f"report:{month}"):
+            return _status_redirect(
+                "report_detail",
+                "Please wait a few seconds before generating another report.",
+                status="error",
+                month=month,
+            )
+        try:
             generate_and_save_report(month)
-        return redirect(url_for("report_detail", month=month))
+        except Exception:
+            app.logger.exception("generate_and_save_report failed for month=%s", month)
+            return _status_redirect(
+                "report_detail", "Could not generate the report right now.", status="error", month=month
+            )
+        return _status_redirect("report_detail", f"Report generated for {month}.", month=month)
 
     @app.route("/reports/<month>")
     def report_detail(month):

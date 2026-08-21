@@ -46,6 +46,13 @@ def rename_or_retype_category(
     sheets_client.update_category(name, new_type=new_type, new_notes=new_notes, new_group=new_group)
 
 
+def set_groups_batch(group_changes: dict):
+    """Batched Group update for multiple categories at once (e.g. every
+    changed row on a single /budgets save), instead of one round trip per
+    category via rename_or_retype_category."""
+    sheets_client.update_categories_batch(group_changes)
+
+
 def rename_category(old_name: str, new_name: str):
     """Changes the category's own name (distinct from rename_or_retype_category
     above, which only touches type/notes/group). Existing Planned/Actual/RawLog

@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.4.4 — fixed slow Save, site-wide toasts, budget sections, two data bugs
+
+- **Fixed the slow `/budgets` Save**: it was doing a read-then-write Google
+  Sheets API round trip *per category* (roughly 2×29 = 58 sequential API
+  calls for a full save). New `sheets_client.upsert_planned_batch` /
+  `update_categories_batch` do it in a fixed 2-4 calls total — one read,
+  one batched cell update, one batched append for brand-new rows — instead
+  of one per category. A full save dropped from tens of seconds to about
+  2.5s in testing.
+- **Site-wide save/delete/add feedback**: every mutating action now shows a
+  top-right toast — "Saving…" the instant you click (no AJAX rewrite
+  needed: the browser keeps rendering the current page, toast included,
+  until the next one is ready), then "✓ done" or "✕ failed with a reason"
+  once the destination page loads. Every Categories and Budgets route now
+  returns through one `_status_redirect` helper instead of a bare redirect,
+  so nothing fails silently anymore.
+- **Budgets grouped into sections with totals**: categories are now grouped
+  by Type (Income, Expense, Debt, Savings, ...) with each section showing
+  its own total, plus an Income / Outflow / Net summary at the top — Income
+  counted as inflow and everything else as outflow, matching the sign
+  convention the dashboard's own Net figure already uses.
+- **Fixed a real bug found while building the above**: the section grouping
+  was first written against an assumed 4-value Type enum (Expense/Income/
+  Savings/Debt), but the live sheet actually has 5 distinct values —
+  "Variable Expense" and "Fixed Expense" instead of a plain "Expense". The
+  fixed list would have silently dropped 15 categories off the Budgets page
+  entirely. Fixed to group by whatever Type values are actually present.
+- **Fixed a related data-loss risk on the Categories page**: the Type
+  dropdown only ever offered 4 canonical options, so a row whose real Type
+  was "Variable Expense" or "Fixed Expense" showed none selected — clicking
+  Save on that row without touching Type would have silently downgraded it
+  to plain "Expense". The dropdown now preserves the real value as its own
+  option when it isn't one of the 4. Type badges are also color-coded
+  correctly for these values now (previously fell back to unstyled, since
+  "Variable Expense" produced an invalid two-token CSS class).
+
 ## 0.4.3 — budgets page gets the same table treatment as categories
 
 - `/budgets` now uses the same real-table-above-phone-width layout as the

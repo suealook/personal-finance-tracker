@@ -10,6 +10,7 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
 </head>
 <body>
+  <div id="toast-stack" aria-live="polite"></div>
   <nav>
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
     <a href="{{ url_for('budgets') }}" class="{{ 'active' if request.endpoint == 'budgets' }}">Budgets</a>
@@ -21,5 +22,91 @@
   <main>
     {% block content %}{% endblock %}
   </main>
+
+  <script>
+  (function () {
+    var stack = document.getElementById('toast-stack');
+
+    function iconFor(status) {
+      if (status === 'processing') {
+        var spin = document.createElement('span');
+        spin.className = 'toast-spinner';
+        return spin;
+      }
+      var span = document.createElement('span');
+      span.textContent = status === 'error' ? '✕' : '✓';
+      return span;
+    }
+
+    function dismiss(toast) {
+      if (!toast.parentNode || toast.classList.contains('leaving')) return;
+      toast.classList.add('leaving');
+      setTimeout(function () {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 200);
+    }
+
+    window.showToast = function (status, message, opts) {
+      opts = opts || {};
+      var toast = document.createElement('div');
+      toast.className = 'toast ' + status;
+
+      var icon = document.createElement('span');
+      icon.className = 'toast-icon';
+      icon.appendChild(iconFor(status));
+
+      var msg = document.createElement('span');
+      msg.className = 'toast-message';
+      msg.textContent = message;
+
+      toast.appendChild(icon);
+      toast.appendChild(msg);
+
+      if (status !== 'processing') {
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'toast-close';
+        close.setAttribute('aria-label', 'Dismiss');
+        close.textContent = '×';
+        close.addEventListener('click', function () { dismiss(toast); });
+        toast.appendChild(close);
+
+        var duration = opts.duration || (status === 'error' ? 6000 : 4000);
+        setTimeout(function () { dismiss(toast); }, duration);
+      }
+
+      stack.appendChild(toast);
+      return toast;
+    };
+
+    // Show the outcome of whatever action just redirected here, then strip
+    // it from the URL so a refresh or back-navigation doesn't replay it.
+    var params = new URLSearchParams(window.location.search);
+    var status = params.get('status');
+    var message = params.get('message');
+    if (status && message) {
+      window.showToast(status === 'error' ? 'error' : 'success', message);
+      params.delete('status');
+      params.delete('message');
+      var qs = params.toString();
+      var cleanUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      window.history.replaceState({}, '', cleanUrl);
+    }
+
+    // Optimistic feedback the instant any form is submitted, covering every
+    // Save/Add/Delete action site-wide without per-form JS. The browser
+    // keeps rendering this page (toast included) until the destination page
+    // is ready, so this "processing" toast stays visible for exactly as
+    // long as the real save takes. Bubble phase (the default) so this runs
+    // after a form's own onsubmit — e.g. a confirm() dialog — has already
+    // had the chance to cancel the submission.
+    document.addEventListener('submit', function (e) {
+      if (e.defaultPrevented) return;
+      var form = e.target;
+      var isGet = (form.getAttribute('method') || 'get').toLowerCase() === 'get';
+      window.showToast('processing', isGet ? 'Loading…' : 'Saving…');
+    });
+  })();
+  </script>
 </body>
 </html>

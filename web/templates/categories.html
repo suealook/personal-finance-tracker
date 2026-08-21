@@ -50,10 +50,18 @@
                  class="editable-field group-input" placeholder="No group">
         </td>
         <td data-label="Type">
-          <select name="type" form="edit-{{ loop.index }}" class="editable-field type-select type-{{ c.Type|lower }}">
+          <select name="type" form="edit-{{ loop.index }}" class="editable-field type-select type-{{ c.Type|lower|replace(' ', '-') }}">
             {% for t in ["Expense", "Income", "Savings", "Debt"] %}
             <option value="{{ t }}" {% if c.Type == t %}selected{% endif %}>{{ t }}</option>
             {% endfor %}
+            {% if c.Type not in ["Expense", "Income", "Savings", "Debt"] %}
+            {# Preserves a Type value that predates the dropdown's 4 options (e.g. "Variable
+               Expense" set directly in the sheet) as its own selected option, so clicking
+               Save on this row without touching Type can't silently downgrade it to
+               "Expense" — which is what happens when no <option> matches the real value
+               and the browser defaults the select to the first one in the list. #}
+            <option value="{{ c.Type }}" selected>{{ c.Type }}</option>
+            {% endif %}
           </select>
         </td>
         <td data-label="Status">
@@ -159,7 +167,7 @@
     // itself previews the category it's about to become.
     document.querySelectorAll('.type-select').forEach(function (sel) {
       sel.addEventListener('change', function () {
-        sel.className = 'editable-field type-select type-' + sel.value.toLowerCase();
+        sel.className = 'editable-field type-select type-' + sel.value.toLowerCase().replace(/\s+/g, '-');
       });
     });
   })();
