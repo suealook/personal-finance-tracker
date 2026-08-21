@@ -21,3 +21,8 @@ COPY app/scripts ./scripts
 
 COPY rootfs /
 RUN chmod a+x /etc/services.d/bot/run /etc/services.d/web/run
+
+# Must be explicit: s6-overlay has to run as PID 1 for its service supervision
+# (services.d) to work at all. Without this, whatever the base image falls back
+# to isn't /init, and s6-overlay-suexec fails with "can only run as pid 1".
+ENTRYPOINT ["/init"]
