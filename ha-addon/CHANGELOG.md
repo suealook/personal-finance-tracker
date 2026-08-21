@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4
+
+- Fix `python-telegram-bot[job-queue]` extra missing from `requirements.txt` —
+  APScheduler wasn't installed in the container, so the bot's heartbeat job
+  silently never ran (logged as a `PTBUserWarning`), leaving the `/update`
+  page's Bot status permanently "Unknown" there. Config loading is confirmed
+  working as of 0.1.3 (unrelated to this).
+
 ## 0.1.3
 
 - The custom supervisor works, but `TELEGRAM_BOT_TOKEN` came back empty even
