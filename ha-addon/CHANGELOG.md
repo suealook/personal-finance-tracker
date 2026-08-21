@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.3 — budgets page gets the same table treatment as categories
+
+- `/budgets` now uses the same real-table-above-phone-width layout as the
+  categories page (0.4.2), instead of always card-stacking: category name is
+  visually primary, Group is a muted secondary field (same `.group-input`
+  style as categories, reused rather than redefined), and the table uses
+  `table-layout: fixed` with percentage columns so it can never overflow its
+  container. The shared plumbing (`.data-table`, the card-stack breakpoint)
+  moved out of the categories-only CSS into one place both pages draw from.
+- Fixed a regression caught before shipping, not after: the new generic
+  "inputs fill their table cell" rule would have also stretched the
+  budgets page's +/−/×/÷ calculator's number field to the full column width,
+  breaking its layout — excluded via `:not(.calc-input)` so the calculator
+  keeps its fixed width on both pages.
+
 ## 0.4.2 — simplified budgets table + categories UX overhaul
 
 - **`/budgets` reverted to a flat table**: the 0.4.1 grouped-card layout (per-

@@ -15,14 +15,14 @@
   <form method="post">
     <input type="hidden" name="month" value="{{ month }}">
     <div class="table-scroll">
-    <table class="responsive-table">
+    <table class="data-table budgets-table">
       <thead><tr><th>Category</th><th>Group</th><th>Planned amount</th></tr></thead>
       <tbody>
         {% for c in categories %}
         <tr>
-          <td data-label="Category">{{ c.Category }}</td>
+          <td data-label="Category"><span class="category-name-plain">{{ c.Category }}</span></td>
           <td data-label="Group">
-            <input type="text" name="group_{{ c.Category }}" value="{{ c.Group }}" placeholder="(none)">
+            <input type="text" name="group_{{ c.Category }}" value="{{ c.Group }}" class="group-input" placeholder="No group">
           </td>
           <td data-label="Planned amount">
             <div class="calc">

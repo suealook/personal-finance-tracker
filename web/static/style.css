@@ -341,30 +341,25 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
   .responsive-table tr { max-width: 560px; }
 }
 
-/* ---- Categories table ------------------------------------------------------
+/* ---- Data table (Categories, Budgets) --------------------------------------
    Deliberately its own layout, not .responsive-table: that pattern always
    card-stacks (by design, see above) which is right for a wide multi-input
-   row but turns a ~37-row category list into a very long scroll of tall
-   cards on desktop. This table's columns are narrow enough (badges/pills
-   instead of full-width inputs) to read comfortably as a real table above
-   the phone breakpoint.
+   row but turns a long category list into a very long scroll of tall cards
+   on desktop. These tables' columns are narrow enough (badges/pills instead
+   of full-width inputs) to read comfortably as a real table above the phone
+   breakpoint.
 
    table-layout: fixed with percentage columns (rather than sizing from
    content, like a normal table would) is the actual fix for the
-   horizontal-scroll bug this page has now shipped three different patches
+   horizontal-scroll bug the categories page shipped three different patches
    for: the table's own width can never exceed its container regardless of
    viewport width, so there's no in-between size left to overflow at — the
    same "no breakpoint to mistune" principle .responsive-table already uses,
-   applied to a real table instead of forcing card-stacking everywhere. */
-.categories-table { table-layout: fixed; width: 100%; }
-.categories-table th:nth-child(1) { width: 9%; }
-.categories-table th:nth-child(2) { width: 17%; }
-.categories-table th:nth-child(3) { width: 15%; }
-.categories-table th:nth-child(4) { width: 13%; }
-.categories-table th:nth-child(5) { width: 12%; }
-.categories-table th:nth-child(6) { width: 19%; }
-.categories-table th:nth-child(7) { width: 15%; }
-.categories-table th {
+   applied to a real table instead of forcing card-stacking everywhere.
+   Column widths are per-table (.categories-table / .budgets-table below)
+   since each has a different column count; everything else is shared. */
+.data-table { table-layout: fixed; width: 100%; }
+.data-table th {
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -372,9 +367,21 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
   color: var(--muted);
   padding: 0.5rem 0.6rem;
 }
-.categories-table td { padding: 0.45rem 0.6rem; vertical-align: middle; overflow: hidden; }
-.categories-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
-.categories-table td input, .categories-table td select { width: 100%; min-width: 0; }
+.data-table td { padding: 0.45rem 0.6rem; vertical-align: middle; overflow: hidden; }
+.data-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.data-table td input:not(.calc-input), .data-table td select { width: 100%; min-width: 0; }
+
+.categories-table th:nth-child(1) { width: 9%; }
+.categories-table th:nth-child(2) { width: 17%; }
+.categories-table th:nth-child(3) { width: 15%; }
+.categories-table th:nth-child(4) { width: 13%; }
+.categories-table th:nth-child(5) { width: 12%; }
+.categories-table th:nth-child(6) { width: 19%; }
+.categories-table th:nth-child(7) { width: 15%; }
+
+.budgets-table th:nth-child(1) { width: 26%; }
+.budgets-table th:nth-child(2) { width: 24%; }
+.budgets-table th:nth-child(3) { width: 50%; }
 
 .control-cluster { display: flex; align-items: center; gap: 0.5rem; }
 .reorder-group { display: inline-flex; flex-direction: column; gap: 2px; }
@@ -398,6 +405,8 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
   padding: 0.35rem 0.5rem;
 }
 .category-name-input:hover, .category-name-input:focus { border-color: var(--border); background: var(--panel-strong); }
+
+.category-name-plain { font-weight: 650; font-size: 0.96rem; padding: 0.35rem 0.5rem; display: block; }
 
 .group-input, .notes-input {
   font-size: 0.85rem;
@@ -456,20 +465,20 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 .row-actions { display: flex; align-items: center; gap: 0.4rem; }
 
 @media (max-width: 780px) {
-  .categories-table thead { display: none; }
-  .categories-table, .categories-table tbody, .categories-table tr, .categories-table td {
+  .data-table thead { display: none; }
+  .data-table, .data-table tbody, .data-table tr, .data-table td {
     display: block;
     width: 100%;
   }
-  .categories-table tr {
+  .data-table tr {
     background: var(--panel-strong);
     border: 1px solid var(--border);
     border-radius: 14px;
     margin-bottom: 0.75rem;
     padding: 0.5rem 0;
   }
-  .categories-table td { border-bottom: none; padding: 0.4rem 0.9rem; }
-  .categories-table td::before {
+  .data-table td { border-bottom: none; padding: 0.4rem 0.9rem; }
+  .data-table td::before {
     content: attr(data-label);
     display: block;
     font-size: 0.7rem;
