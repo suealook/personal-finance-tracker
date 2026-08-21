@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2
+
+- Replace s6-overlay service supervision with a small custom Python
+  supervisor (`run_supervisor.py`). The explicit `ENTRYPOINT ["/init"]` fix in
+  0.1.1 did not resolve `s6-overlay-suexec: fatal: can only run as pid 1` —
+  rather than keep guessing at base-image-specific s6 conventions with no way
+  to test against a real Supervisor from outside, the add-on now starts and
+  supervises the bot and web processes itself, with no s6 dependency at all.
+
 ## 0.1.1
 
 - Fix `s6-overlay-suexec: fatal: can only run as pid 1` on start — the

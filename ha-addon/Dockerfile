@@ -2,6 +2,7 @@ ARG BUILD_FROM
 FROM $BUILD_FROM
 
 ENV LANG=C.UTF-8
+ENV WEB_BIND_HOST=0.0.0.0
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 python3-pip \
@@ -19,10 +20,8 @@ COPY app/common ./common
 COPY app/config ./config
 COPY app/scripts ./scripts
 
-COPY rootfs /
-RUN chmod a+x /etc/services.d/bot/run /etc/services.d/web/run
+# Starts and supervises the bot + web processes directly — no dependency on the
+# base image's s6-overlay init, which failed to start reliably (see CHANGELOG).
+COPY run_supervisor.py /run_supervisor.py
 
-# Must be explicit: s6-overlay has to run as PID 1 for its service supervision
-# (services.d) to work at all. Without this, whatever the base image falls back
-# to isn't /init, and s6-overlay-suexec fails with "can only run as pid 1".
-ENTRYPOINT ["/init"]
+ENTRYPOINT ["python3", "/run_supervisor.py"]
