@@ -79,7 +79,9 @@ containers.
 4. Find "Personal Finance Tracker" in the store and install it.
 5. Open its **Configuration** tab and fill in the same values as `.env` above
    (paste the *entire* service-account JSON as the `google_service_account_json`
-   field — HA's config form can't upload files).
+   field — HA's config form can't upload files), plus a **`dashboard_password`**
+   — required here (unlike local dev): the dashboard binds to your whole LAN
+   under Home Assistant, and the add-on refuses to start without one.
 6. Start the add-on. Check its **Log** tab for both the bot and web processes
    starting cleanly.
 7. Open `http://<your-ha-ip>:5000` — the dashboard's own **Update** page shows

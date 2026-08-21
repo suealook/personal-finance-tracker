@@ -4,6 +4,7 @@ structured transaction dict via Claude tool-calling.
 
 from anthropic import Anthropic
 
+from common import usage_tracker
 from common.dateutil_helpers import today_str
 from config import settings
 
@@ -88,6 +89,7 @@ def parse_transaction(text: str, categories: list[str], today: str | None = None
         tools=[TOOL_SCHEMA],
         tool_choice={"type": "tool", "name": "log_transaction"},
     )
+    usage_tracker.record_claude_usage(response.usage.input_tokens, response.usage.output_tokens)
     for block in response.content:
         if block.type == "tool_use" and block.name == "log_transaction":
             return block.input

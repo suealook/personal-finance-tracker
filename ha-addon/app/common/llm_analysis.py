@@ -3,6 +3,7 @@
 from anthropic import Anthropic
 
 from common import sheets_client
+from common import usage_tracker
 from common.dateutil_helpers import month_bounds, now_str
 from config import settings
 
@@ -91,6 +92,7 @@ def generate_monthly_report(month: str) -> str:
         system=system,
         messages=[{"role": "user", "content": user_prompt}],
     )
+    usage_tracker.record_claude_usage(response.usage.input_tokens, response.usage.output_tokens)
     return "".join(block.text for block in response.content if block.type == "text")
 
 
@@ -121,6 +123,7 @@ def quick_tip(month: str) -> str | None:
         system=system,
         messages=[{"role": "user", "content": "\n".join(lines)}],
     )
+    usage_tracker.record_claude_usage(response.usage.input_tokens, response.usage.output_tokens)
     text = "".join(block.text for block in response.content if block.type == "text").strip()
     if not text or text.lower() == "none":
         return None
@@ -173,6 +176,7 @@ def dashboard_insights(month: str) -> list[str]:
         tools=[INSIGHTS_TOOL_SCHEMA],
         tool_choice={"type": "tool", "name": "give_insights"},
     )
+    usage_tracker.record_claude_usage(response.usage.input_tokens, response.usage.output_tokens)
     for block in response.content:
         if block.type == "tool_use" and block.name == "give_insights":
             return block.input.get("insights", [])

@@ -40,12 +40,45 @@ HEADERS = {
     TAB_REPORTS: ["Month", "GeneratedAt", "ReportText", "ModelUsed"],
 }
 
-_retryable = retry(
+_retry = retry(
     retry=retry_if_exception_type(gspread.exceptions.APIError),
     wait=wait_exponential(multiplier=1, min=1, max=20),
     stop=stop_after_attempt(5),
     reraise=True,
 )
+
+_sheets_call_count = 0
+
+
+def _retryable(func):
+    """Retry on transient Sheets API errors, and count the call for the
+    /update page's usage display (per-process; resets on restart)."""
+    retried = _retry(func)
+
+    def wrapper(*args, **kwargs):
+        global _sheets_call_count
+        _sheets_call_count += 1
+        return retried(*args, **kwargs)
+
+    wrapper.__name__ = getattr(func, "__name__", "wrapped")
+    return wrapper
+
+
+def get_sheets_call_count() -> int:
+    return _sheets_call_count
+
+
+# Cell values starting with one of these are live formulas under
+# USER_ENTERED — a leading apostrophe forces Sheets to treat the value as
+# plain text instead (hidden in the UI, doesn't change what's displayed).
+_FORMULA_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_cell(value):
+    if isinstance(value, str) and value.startswith(_FORMULA_INJECTION_PREFIXES):
+        return "'" + value
+    return value
+
 
 _client = None
 _spreadsheet = None
@@ -102,7 +135,7 @@ class SheetTab:
         "T" separator become space-separated), so a post-hoc value match can miss.
         The row number is instead parsed straight from the append API response.
         """
-        row = [row_dict.get(col, "") for col in self._header]
+        row = [_sanitize_cell(row_dict.get(col, "")) for col in self._header]
         result = self.ws.append_row(row, value_input_option="USER_ENTERED")
         updated_range = result["updates"]["updatedRange"]  # e.g. "RawLog!A3:F3"
         match = re.search(r"!\D+(\d+)", updated_range)
@@ -126,7 +159,7 @@ class SheetTab:
     @_retryable
     def update_cell(self, row_index: int, col_name: str, value):
         col_index = self._header.index(col_name) + 1
-        self.ws.update_cell(row_index, col_index, value)
+        self.ws.update_cell(row_index, col_index, _sanitize_cell(value))
 
     @_retryable
     def get_record_at(self, row_index: int) -> dict:

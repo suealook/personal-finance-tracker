@@ -8,4 +8,5 @@ openpyxl>=3
 python-dotenv>=1
 tenacity>=8
 markdown>=3
+bleach>=6
 requests>=2

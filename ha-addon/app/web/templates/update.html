@@ -39,6 +39,34 @@
     <p id="update-status" class="insights-status"></p>
   </div>
 
+  <div class="card">
+    <h2>Usage &amp; cost estimate</h2>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Service</th><th>Calls</th><th>Tokens</th><th>Est. cost</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Claude API</td>
+          <td>{{ claude_usage.call_count }}</td>
+          <td>{{ "{:,}".format(claude_usage.input_tokens) }} in / {{ "{:,}".format(claude_usage.output_tokens) }} out</td>
+          <td>${{ "%.2f"|format(claude_usage.cost_usd) }} (~฿{{ "%.2f"|format(claude_usage.cost_thb) }})</td>
+        </tr>
+        <tr>
+          <td>Google Sheets API</td>
+          <td>{{ sheets_call_count }}</td>
+          <td>&mdash;</td>
+          <td class="muted">Free (no per-call billing)</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="muted" style="margin-top: 0.6rem; font-size: 0.82rem;">
+      Claude cost is a rough estimate: standard list pricing for {{ claude_model }} at a fixed
+      ~36 THB/USD, cumulative since this add-on was last (re)installed — not a live exchange
+      rate or an actual bill. Sheets call count resets whenever the web service restarts.
+    </p>
+  </div>
+
   <script>
   (function () {
     var btn = document.getElementById('update-btn');

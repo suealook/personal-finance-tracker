@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.0 — security hardening + usage/cost tracking
+
+Full audit found the dashboard had **no authentication at all** while being
+network-exposed (binds to 0.0.0.0 under HA) — the most important fix here.
+
+- **Auth required under HA**: new `dashboard_password` config option, HTTP
+  Basic Auth on every route. The add-on now refuses to start under Home
+  Assistant if it's not set (fail-closed). Optional for local dev
+  (127.0.0.1-only, trusted).
+- **CSRF protection**: state-changing POST requests are rejected if their
+  Origin/Referer doesn't match the dashboard's own host.
+- **Google Sheets formula-injection fix**: any text written to a cell that
+  starts with `=`, `+`, `-`, or `@` is now stored as literal text (was
+  previously written as a live, evaluatable formula).
+- **XSS hardening**: monthly report HTML (Claude-generated markdown) is now
+  sanitized through an allowlist (`bleach`) before rendering, instead of
+  trusting it directly.
+- **Rate limiting**: `/api/insights` and `/reports/generate` (the two routes
+  that trigger paid Claude API calls) now have a 10s cooldown to blunt
+  automated cost-abuse.
+- **Usage & cost tracking**: the `/update` page now shows cumulative Claude
+  API token usage with an estimated cost in USD and THB, plus a Google
+  Sheets API call count (free — shown as activity, not cost).
+- Not fixed this round: container still runs as root (lower severity given
+  Supervisor's own sandboxing; deferred to avoid another permission-mapping
+  guessing game after the s6-overlay saga in earlier versions).
+
 ## 0.2.0
 
 - Categories page: widened the mobile-card breakpoint from 640px to 900px —

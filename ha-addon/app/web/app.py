@@ -1,6 +1,10 @@
+import bleach
 import io
+import secrets
 import threading
+import time
 from datetime import date, datetime, timezone
+from urllib.parse import urlparse
 
 import markdown as markdown_lib
 import pandas as pd
@@ -9,16 +13,37 @@ from flask import Flask, Response, jsonify, redirect, render_template, request, 
 from common import categories as categories_module
 from common import sheets_client
 from common import supervisor_client
+from common import usage_tracker
 from common.dateutil_helpers import current_month, last_n_months, month_bounds, previous_month, year_bounds
 from common.heartbeat import heartbeat_age_seconds
 from common.llm_analysis import compute_variance, dashboard_insights, generate_and_save_report
+from config import settings
 
 SPARKLINE_MONTHS = 6
 MAX_GROUP_SLOTS = 6  # + one folded "Other" bucket = 7 visual segments max
+LLM_CALL_COOLDOWN_SECONDS = 10  # guards /api/insights and /reports/generate against cost-abuse loops
+
+ALLOWED_REPORT_TAGS = [
+    "p", "br", "strong", "em", "ul", "ol", "li", "h1", "h2", "h3", "h4",
+    "blockquote", "code", "pre", "a", "table", "thead", "tbody", "tr", "th", "td",
+]
+ALLOWED_REPORT_ATTRS = {"a": ["href", "title"]}
 
 WEB_STARTED_AT = datetime.now(timezone.utc)
 BOT_HEARTBEAT_RUNNING_SECONDS = 90    # < this since last heartbeat: bot is fine
 BOT_HEARTBEAT_STALE_SECONDS = 180     # < this: bot may be restarting/hung; >= this: not responding
+
+_last_llm_call_at: dict[str, float] = {}
+
+
+def _llm_rate_limited(key: str) -> bool:
+    """True if this key's last call was too recent — used to blunt cost-abuse
+    loops against the two routes that trigger real Anthropic API calls."""
+    now = time.time()
+    if now - _last_llm_call_at.get(key, 0.0) < LLM_CALL_COOLDOWN_SECONDS:
+        return True
+    _last_llm_call_at[key] = now
+    return False
 
 
 def _bot_status() -> dict:
@@ -88,7 +113,38 @@ def _build_group_segments(group_totals: dict[str, dict[str, float]]) -> list[dic
 
 
 def create_app() -> Flask:
+    if settings.RUNNING_UNDER_HOME_ASSISTANT and not settings.DASHBOARD_PASSWORD:
+        raise RuntimeError(
+            "dashboard_password is not set. Set it in the add-on's Configuration "
+            "tab before starting — the dashboard binds to 0.0.0.0 (LAN-reachable) "
+            "under Home Assistant and must not be served without a password."
+        )
+
     app = Flask(__name__)
+
+    @app.before_request
+    def _security_gate():
+        # CSRF: reject cross-origin state-changing requests. Checked before auth,
+        # and regardless of whether a password is configured, since a forged POST
+        # from another site is a risk independent of authentication.
+        if request.method == "POST":
+            origin = request.headers.get("Origin") or request.headers.get("Referer")
+            if origin:
+                origin_host = urlparse(origin).netloc
+                if origin_host and origin_host != request.host:
+                    return Response("Cross-origin request rejected.", status=403)
+
+        # Auth: required whenever a password is configured (always true under
+        # Home Assistant, per the fail-closed check above; optional for local
+        # dev, which is bound to 127.0.0.1 only).
+        if settings.DASHBOARD_PASSWORD:
+            auth = request.authorization
+            if not auth or not secrets.compare_digest(auth.password or "", settings.DASHBOARD_PASSWORD):
+                return Response(
+                    "Authentication required.",
+                    status=401,
+                    headers={"WWW-Authenticate": 'Basic realm="Personal Finance Tracker"'},
+                )
 
     @app.route("/")
     def dashboard():
@@ -167,6 +223,8 @@ def create_app() -> Flask:
 
     @app.route("/api/insights")
     def api_insights():
+        if _llm_rate_limited("insights"):
+            return jsonify({"insights": [], "error": "Please wait a few seconds and try again."}), 429
         month = request.args.get("month", current_month())
         try:
             insights = dashboard_insights(month)
@@ -267,13 +325,18 @@ def create_app() -> Flask:
     @app.route("/reports/generate", methods=["POST"])
     def reports_generate():
         month = request.form.get("month", current_month())
-        generate_and_save_report(month)
+        if not _llm_rate_limited(f"report:{month}"):
+            generate_and_save_report(month)
         return redirect(url_for("report_detail", month=month))
 
     @app.route("/reports/<month>")
     def report_detail(month):
         report = sheets_client.get_report(month)
-        html = markdown_lib.markdown(report["ReportText"]) if report else None
+        if report:
+            raw_html = markdown_lib.markdown(report["ReportText"])
+            html = bleach.clean(raw_html, tags=ALLOWED_REPORT_TAGS, attributes=ALLOWED_REPORT_ATTRS, strip=True)
+        else:
+            html = None
         return render_template("report_detail.html", month=month, report=report, report_html=html)
 
     @app.route("/export")
@@ -342,6 +405,9 @@ def create_app() -> Flask:
             supervisor_available=supervisor_available,
             addon_info=addon_info,
             supervisor_error=supervisor_error,
+            claude_usage=usage_tracker.get_claude_usage_summary(),
+            sheets_call_count=sheets_client.get_sheets_call_count(),
+            claude_model=settings.CLAUDE_MODEL,
         )
 
     @app.route("/update/run", methods=["POST"])

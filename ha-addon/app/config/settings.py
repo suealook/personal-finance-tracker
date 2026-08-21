@@ -63,5 +63,12 @@ CLAUDE_MODEL = _get("claude_model", "CLAUDE_MODEL", "claude-sonnet-5")
 WEB_PORT = int(_get("web_port", "WEB_PORT", "5000"))
 WEB_BIND_HOST = os.environ.get("WEB_BIND_HOST", "127.0.0.1")
 
+# The dashboard binds to 0.0.0.0 (LAN-reachable) once deployed under Home
+# Assistant, so it must not be servable without a password there. Local dev
+# (bound to 127.0.0.1 only) keeps this optional for convenience. Enforced
+# (fail-closed) in web/app.py specifically — not here, since this module is
+# also imported by the bot process, which has no need for this password.
+DASHBOARD_PASSWORD = _get("dashboard_password", "DASHBOARD_PASSWORD")
+
 REPORTS_CACHE_DIR = (HA_DATA_DIR if RUNNING_UNDER_HOME_ASSISTANT else BASE_DIR / "data") / "reports_cache"
 HEARTBEAT_DIR = HA_DATA_DIR if RUNNING_UNDER_HOME_ASSISTANT else BASE_DIR / "data"
