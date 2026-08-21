@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Finance Tracker{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav>
+    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
+    <a href="{{ url_for('budgets') }}" class="{{ 'active' if request.endpoint == 'budgets' }}">Budgets</a>
+    <a href="{{ url_for('categories_page') }}" class="{{ 'active' if request.endpoint == 'categories_page' }}">Categories</a>
+    <a href="{{ url_for('reports_page') }}" class="{{ 'active' if request.endpoint in ('reports_page', 'report_detail') }}">Reports</a>
+    <a href="{{ url_for('export_page') }}" class="{{ 'active' if request.endpoint in ('export_page', 'export_download') }}">Export</a>
+    <a href="{{ url_for('update_page') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('update_') }}">Update</a>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

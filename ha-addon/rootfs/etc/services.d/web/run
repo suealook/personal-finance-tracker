@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+export WEB_BIND_HOST=0.0.0.0
+cd /app
+exec python3 scripts/run_web.py

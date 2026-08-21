@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block content %}
+  <h1>Categories</h1>
+  <p class="muted">Priority order top to bottom. Use &uarr;/&darr; to reorder.</p>
+
+  <div class="table-scroll">
+  <table class="responsive-table">
+    <thead><tr><th></th><th>Category</th><th>Group</th><th>Type</th><th>Active</th><th>Notes</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for c in categories %}
+      <tr>
+        <td class="nowrap" data-label="Reorder">
+          <form method="post" action="{{ url_for('categories_move_up') }}" class="inline-form">
+            <input type="hidden" name="name" value="{{ c.Category }}">
+            <button type="submit" title="Move up">&uarr;</button>
+          </form>
+          <form method="post" action="{{ url_for('categories_move_down') }}" class="inline-form">
+            <input type="hidden" name="name" value="{{ c.Category }}">
+            <button type="submit" title="Move down">&darr;</button>
+          </form>
+        </td>
+        <td data-label="Category">{{ c.Category }}</td>
+        <td data-label="Group"><input type="text" name="group" value="{{ c.Group }}" form="edit-{{ loop.index }}" placeholder="(none)"></td>
+        <td data-label="Type">
+          <select name="type" form="edit-{{ loop.index }}">
+            {% for t in ["Expense", "Income", "Savings", "Debt"] %}
+            <option value="{{ t }}" {% if c.Type == t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td data-label="Active">{{ c.Active }}</td>
+        <td data-label="Notes"><input type="text" name="notes" value="{{ c.Notes }}" form="edit-{{ loop.index }}"></td>
+        <td data-label="Actions">
+          <form id="edit-{{ loop.index }}" method="post" action="{{ url_for('categories_edit') }}" class="inline-form">
+            <input type="hidden" name="name" value="{{ c.Category }}">
+            <button type="submit">Save</button>
+          </form>
+          {% if c.Active == 'TRUE' %}
+          <form method="post" action="{{ url_for('categories_delete') }}" class="inline-form">
+            <input type="hidden" name="name" value="{{ c.Category }}">
+            <button type="submit" class="btn-red">Deactivate</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('categories_activate') }}" class="inline-form">
+            <input type="hidden" name="name" value="{{ c.Category }}">
+            <button type="submit" class="btn-green">Activate</button>
+          </form>
+          <form method="post" action="{{ url_for('categories_remove') }}" class="inline-form"
+                onsubmit="return confirm('Permanently remove {{ c.Category }}? This can\'t be undone (past transactions keep showing this category name, but you won\'t be able to log new ones under it).');">
+            <input type="hidden" name="name" value="{{ c.Category }}">
+            <button type="submit" class="btn-red">Remove</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="card">
+  <h2>Add category</h2>
+  <form method="post" action="{{ url_for('categories_add') }}">
+    <input type="text" name="name" placeholder="Category name" required>
+    <input type="text" name="group" placeholder="Group (optional, e.g. Cloud Subscription)">
+    <select name="type">
+      <option value="Expense">Expense</option>
+      <option value="Income">Income</option>
+      <option value="Savings">Savings</option>
+      <option value="Debt">Debt</option>
+    </select>
+    <input type="text" name="notes" placeholder="Notes (optional)">
+    <button type="submit">Add</button>
+  </form>
+  </div>
+{% endblock %}
