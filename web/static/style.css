@@ -255,24 +255,6 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 
 .empty-state { color: var(--muted); font-size: 0.9rem; padding: 0.5rem 0; }
 
-/* Budget groups: bottom-up sub-category clusters on the budgets page */
-.budget-group-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-.budget-group-header h2 { margin: 0; }
-.budget-group-total {
-  font-variant-numeric: tabular-nums;
-  font-weight: 650;
-  font-size: 1.05rem;
-  color: var(--accent);
-}
-.rename-input { width: 150px; margin-right: 0.3rem; }
-.budget-quick-add { display: flex; gap: 0.4rem; margin-top: 0.9rem; flex-wrap: wrap; }
-.budget-quick-add input[type="text"] { flex: 1; min-width: 160px; }
 
 /* Inline calculator, used on the budgets page */
 .calc { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
@@ -357,4 +339,144 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 }
 @media (min-width: 640px) {
   .responsive-table tr { max-width: 560px; }
+}
+
+/* ---- Categories table ------------------------------------------------------
+   Deliberately its own layout, not .responsive-table: that pattern always
+   card-stacks (by design, see above) which is right for a wide multi-input
+   row but turns a ~37-row category list into a very long scroll of tall
+   cards on desktop. This table's columns are narrow enough (badges/pills
+   instead of full-width inputs) to read comfortably as a real table above
+   the phone breakpoint.
+
+   table-layout: fixed with percentage columns (rather than sizing from
+   content, like a normal table would) is the actual fix for the
+   horizontal-scroll bug this page has now shipped three different patches
+   for: the table's own width can never exceed its container regardless of
+   viewport width, so there's no in-between size left to overflow at — the
+   same "no breakpoint to mistune" principle .responsive-table already uses,
+   applied to a real table instead of forcing card-stacking everywhere. */
+.categories-table { table-layout: fixed; width: 100%; }
+.categories-table th:nth-child(1) { width: 9%; }
+.categories-table th:nth-child(2) { width: 17%; }
+.categories-table th:nth-child(3) { width: 15%; }
+.categories-table th:nth-child(4) { width: 13%; }
+.categories-table th:nth-child(5) { width: 12%; }
+.categories-table th:nth-child(6) { width: 19%; }
+.categories-table th:nth-child(7) { width: 15%; }
+.categories-table th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0.5rem 0.6rem;
+}
+.categories-table td { padding: 0.45rem 0.6rem; vertical-align: middle; overflow: hidden; }
+.categories-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.categories-table td input, .categories-table td select { width: 100%; min-width: 0; }
+
+.control-cluster { display: flex; align-items: center; gap: 0.5rem; }
+.reorder-group { display: inline-flex; flex-direction: column; gap: 2px; }
+.reorder-btn {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.65rem;
+  line-height: 1.4;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.reorder-btn:first-child { border-radius: 6px 6px 0 0; }
+.reorder-btn:last-child { border-radius: 0 0 6px 6px; margin-top: -1px; }
+.reorder-btn:hover { color: var(--text); background: var(--panel-strong); }
+
+.category-name-input {
+  font-weight: 650;
+  font-size: 0.96rem;
+  border-color: transparent;
+  background: transparent;
+  padding: 0.35rem 0.5rem;
+}
+.category-name-input:hover, .category-name-input:focus { border-color: var(--border); background: var(--panel-strong); }
+
+.group-input, .notes-input {
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-color: transparent;
+  background: transparent;
+  padding: 0.35rem 0.5rem;
+}
+.group-input:hover, .group-input:focus,
+.notes-input:hover, .notes-input:focus { border-color: var(--border); background: var(--panel-strong); color: var(--text); }
+
+.type-select {
+  font-weight: 600;
+  font-size: 0.78rem;
+  border: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.type-select.type-expense { background: color-mix(in srgb, var(--series-1) 20%, var(--panel-strong)); color: var(--series-1); }
+.type-select.type-income { background: color-mix(in srgb, var(--status-good) 20%, var(--panel-strong)); color: var(--status-good); }
+.type-select.type-savings { background: color-mix(in srgb, var(--series-7) 20%, var(--panel-strong)); color: var(--series-7); }
+.type-select.type-debt { background: color-mix(in srgb, var(--status-critical) 20%, var(--panel-strong)); color: var(--status-critical); }
+
+.status-pill {
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+.status-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.status-pill.status-active { background: color-mix(in srgb, var(--status-good) 16%, var(--panel-strong)); color: var(--status-good); }
+.status-pill.status-active:hover { background: color-mix(in srgb, var(--status-good) 28%, var(--panel-strong)); }
+.status-pill.status-inactive { background: color-mix(in srgb, var(--muted) 18%, var(--panel-strong)); color: var(--muted); }
+.status-pill.status-inactive:hover { background: color-mix(in srgb, var(--muted) 30%, var(--panel-strong)); }
+
+.save-btn { opacity: 0.4; background: var(--panel-strong); color: var(--muted); box-shadow: none; }
+.save-btn.dirty { opacity: 1; background: var(--accent); color: white; }
+
+.icon-btn-remove {
+  background: transparent;
+  color: var(--muted);
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.icon-btn-remove:hover { color: var(--status-critical); border-color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 10%, transparent); }
+
+.row-actions { display: flex; align-items: center; gap: 0.4rem; }
+
+@media (max-width: 780px) {
+  .categories-table thead { display: none; }
+  .categories-table, .categories-table tbody, .categories-table tr, .categories-table td {
+    display: block;
+    width: 100%;
+  }
+  .categories-table tr {
+    background: var(--panel-strong);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0;
+  }
+  .categories-table td { border-bottom: none; padding: 0.4rem 0.9rem; }
+  .categories-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
 }

@@ -249,49 +249,35 @@ def create_app() -> Flask:
     def budgets():
         month = request.args.get("month") or request.form.get("month") or current_month()
         if request.method == "POST":
-            for category in categories_module.get_active_categories():
-                field = f"amount_{category}"
-                if field in request.form and request.form[field].strip() != "":
+            active_records = categories_module.get_active_category_records()
+            for c in active_records:
+                category = c["Category"]
+
+                amount_field = f"amount_{category}"
+                if amount_field in request.form and request.form[amount_field].strip() != "":
                     try:
-                        amount = float(request.form[field])
+                        amount = float(request.form[amount_field])
                     except ValueError:
-                        continue
-                    sheets_client.upsert_planned(month, category, amount)
+                        pass
+                    else:
+                        sheets_client.upsert_planned(month, category, amount)
+
+                group_field = f"group_{category}"
+                if group_field in request.form:
+                    new_group = request.form[group_field].strip()
+                    if new_group != (c.get("Group") or ""):
+                        categories_module.rename_or_retype_category(category, new_group=new_group)
+
             return redirect(url_for("budgets", month=month))
 
         active_records = categories_module.get_active_category_records()
         planned_rows = {r["Category"]: r["PlannedAmount"] for r in sheets_client.get_planned(month)}
-
-        groups: dict[str, list[dict]] = {}
-        group_order: list[str] = []
-        ungrouped: list[dict] = []
-        for c in active_records:
-            group = c.get("Group") or ""
-            if not group:
-                ungrouped.append(c)
-                continue
-            if group not in groups:
-                groups[group] = []
-                group_order.append(group)
-            groups[group].append(c)
-
-        budget_groups = []
-        for group in group_order:
-            members = groups[group]
-            type_counts: dict[str, int] = {}
-            for c in members:
-                type_counts[c["Type"]] = type_counts.get(c["Type"], 0) + 1
-            dominant_type = max(type_counts, key=type_counts.get)
-            budget_groups.append({"name": group, "categories": members, "default_type": dominant_type})
-
         return render_template(
             "budgets.html",
             month=month,
-            budget_groups=budget_groups,
-            ungrouped=ungrouped,
+            categories=active_records,
             planned=planned_rows,
             prev_month=previous_month(month),
-            category_types=categories_module.VALID_TYPES,
         )
 
     @app.route("/budgets/copy_previous", methods=["POST"])
@@ -302,22 +288,6 @@ def create_app() -> Flask:
             amount = float(row.get("PlannedAmount") or 0)
             sheets_client.upsert_planned(month, row["Category"], amount, row.get("Notes", ""))
         return redirect(url_for("budgets", month=month))
-
-    @app.route("/categories/rename", methods=["POST"])
-    def categories_rename():
-        old_name = request.form.get("old_name", "")
-        new_name = request.form.get("new_name", "")
-        if old_name and new_name:
-            try:
-                categories_module.rename_category(old_name, new_name)
-            except ValueError:
-                pass
-        # Rename can be submitted from either the budgets or categories page;
-        # return to whichever it came from. Only trust a same-origin referrer.
-        referrer = request.referrer or ""
-        if referrer.startswith(request.host_url):
-            return redirect(referrer)
-        return redirect(url_for("categories_page"))
 
     @app.route("/categories")
     def categories_page():
@@ -339,10 +309,17 @@ def create_app() -> Flask:
     @app.route("/categories/edit", methods=["POST"])
     def categories_edit():
         name = request.form.get("name", "")
+        new_name = request.form.get("new_name", "").strip()
         type_ = request.form.get("type") or None
         notes = request.form.get("notes")
         group = request.form.get("group")
         if name:
+            if new_name and new_name != name:
+                try:
+                    categories_module.rename_category(name, new_name)
+                    name = new_name  # subsequent updates target the row under its new name
+                except ValueError:
+                    pass  # duplicate/invalid name -- keep old name, other fields still apply below
             categories_module.rename_or_retype_category(
                 name, new_type=type_, new_notes=notes, new_group=group
             )

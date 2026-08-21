@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.4.2 — simplified budgets table + categories UX overhaul
+
+- **`/budgets` reverted to a flat table**: the 0.4.1 grouped-card layout (per-
+  group sections, live subtotals, inline quick-add) was more different from
+  the rest of the app than it needed to be. Back to one table — Category,
+  Group, Planned amount — where Group is just an editable column value, not
+  a section. Renaming/adding/removing categories now happens only on the
+  Categories page, so there's one place responsible for category identity
+  instead of two.
+- **Categories page redesigned for actual desktop use, not just fixed
+  again**: the table was rendering as ~35 tall stacked cards on every screen
+  size (the 0.3.1 "always stack" fix traded the horizontal-scroll bug for a
+  very long vertical scroll on desktop). It's now a real compact table above
+  the phone breakpoint:
+  - Active/Inactive collapses from three separate controls (a status column
+    plus Deactivate *and* Activate buttons) into one colored status pill —
+    click it to toggle.
+  - Type is a color-coded badge instead of a plain dropdown, so a row's kind
+    (Expense/Income/Savings/Debt) reads at a glance.
+  - The category name is visually primary; Group and Notes are visually
+    secondary (smaller, muted) so the row doesn't shout equally everywhere.
+  - Per-row Save stays dimmed until that row actually has an unsaved edit,
+    instead of 35 equally-loud Save buttons on an untouched page.
+  - The table uses `table-layout: fixed` with percentage columns rather than
+    letting content dictate width — this is the actual fix for the
+    horizontal-scroll bug across *all* three previous attempts (0.2.0 wider
+    breakpoint, 0.3.1 "always stack"): the table's rendered width can now
+    never exceed its container at any viewport size, so there's no
+    in-between width left to overflow at. Below ~780px it still card-stacks,
+    matching how every other table in the app already behaves on phones.
+
 ## 0.4.1 — bottom-up sub-category budgets
 
 - `/budgets` now clusters categories under their existing `Group` tag (the

@@ -11,84 +11,23 @@
     <button type="submit" class="btn-ghost">Copy from {{ prev_month }}</button>
   </form>
 
-  {% if budget_groups or ungrouped %}
-  <form id="budgets-form" method="post"></form>
-  <input type="hidden" name="month" value="{{ month }}" form="budgets-form">
-
-  {% for group in budget_groups %}
-  {% set group_loop = loop %}
-  <div class="card budget-group">
-    <div class="budget-group-header">
-      <h2>{{ group.name }}</h2>
-      <span class="budget-group-total" data-group-total>0.00</span>
-    </div>
+  {% if categories %}
+  <form method="post">
+    <input type="hidden" name="month" value="{{ month }}">
     <div class="table-scroll">
     <table class="responsive-table">
-      <thead><tr><th>Category</th><th>Planned amount</th><th></th></tr></thead>
-      <tbody class="budget-group-body">
-        {% for c in group.categories %}
-        <tr>
-          <td data-label="Category">
-            <form id="rename-{{ group_loop.index }}-{{ loop.index }}" method="post" action="{{ url_for('categories_rename') }}" class="inline-form">
-              <input type="hidden" name="old_name" value="{{ c.Category }}">
-            </form>
-            <input type="text" name="new_name" value="{{ c.Category }}" class="rename-input" form="rename-{{ group_loop.index }}-{{ loop.index }}">
-            <button type="submit" class="btn-ghost" title="Rename" form="rename-{{ group_loop.index }}-{{ loop.index }}">&check;</button>
-          </td>
-          <td data-label="Planned amount">
-            <div class="calc">
-              <input type="number" step="0.01" inputmode="decimal" class="calc-input budget-amount-input"
-                     name="amount_{{ c.Category }}" value="{{ planned.get(c.Category, '') }}" placeholder="0.00" form="budgets-form">
-              <span class="calc-hint"></span>
-              <div class="calc-ops">
-                <button type="button" class="calc-btn" data-op="+" title="Add">+</button>
-                <button type="button" class="calc-btn" data-op="-" title="Subtract">&minus;</button>
-                <button type="button" class="calc-btn" data-op="*" title="Multiply">&times;</button>
-                <button type="button" class="calc-btn" data-op="/" title="Divide">&divide;</button>
-                <button type="button" class="calc-btn calc-eq" data-op="=" title="Equals">=</button>
-                <button type="button" class="calc-btn calc-clear" data-op="C" title="Clear">C</button>
-              </div>
-            </div>
-          </td>
-          <td data-label="Remove">
-            <form method="post" action="{{ url_for('categories_delete') }}" class="inline-form"
-                  onsubmit="return confirm('Deactivate {{ c.Category }}? (Reversible from the Categories page.)');">
-              <input type="hidden" name="name" value="{{ c.Category }}">
-              <button type="submit" class="btn-red" title="Remove">&times;</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    <form method="post" action="{{ url_for('categories_add') }}" class="inline-form budget-quick-add">
-      <input type="hidden" name="group" value="{{ group.name }}">
-      <input type="text" name="name" placeholder="Add to {{ group.name }}..." required>
-      <select name="type">
-        {% for t in category_types %}
-        <option value="{{ t }}" {% if t == group.default_type %}selected{% endif %}>{{ t }}</option>
-        {% endfor %}
-      </select>
-      <button type="submit">+ Add</button>
-    </form>
-  </div>
-  {% endfor %}
-
-  {% if ungrouped %}
-  <div class="card">
-    <h2>Other</h2>
-    <div class="table-scroll">
-    <table class="responsive-table">
-      <thead><tr><th>Category</th><th>Planned amount</th></tr></thead>
+      <thead><tr><th>Category</th><th>Group</th><th>Planned amount</th></tr></thead>
       <tbody>
-        {% for c in ungrouped %}
+        {% for c in categories %}
         <tr>
           <td data-label="Category">{{ c.Category }}</td>
+          <td data-label="Group">
+            <input type="text" name="group_{{ c.Category }}" value="{{ c.Group }}" placeholder="(none)">
+          </td>
           <td data-label="Planned amount">
             <div class="calc">
               <input type="number" step="0.01" inputmode="decimal" class="calc-input"
-                     name="amount_{{ c.Category }}" value="{{ planned.get(c.Category, '') }}" placeholder="0.00" form="budgets-form">
+                     name="amount_{{ c.Category }}" value="{{ planned.get(c.Category, '') }}" placeholder="0.00">
               <span class="calc-hint"></span>
               <div class="calc-ops">
                 <button type="button" class="calc-btn" data-op="+" title="Add">+</button>
@@ -105,10 +44,12 @@
       </tbody>
     </table>
     </div>
-  </div>
-  {% endif %}
-
-  <button type="submit" form="budgets-form" style="margin-top: 1rem;">Save budgets for {{ month }}</button>
+    <button type="submit" style="margin-top: 1rem;">Save budgets for {{ month }}</button>
+  </form>
+  <p class="muted" style="font-size: 0.85rem;">
+    Adding, renaming, or removing categories happens on the
+    <a href="{{ url_for('categories_page') }}">Categories page</a>.
+  </p>
   {% else %}
   <p>No active categories yet. <a href="{{ url_for('categories_page') }}">Add some first</a>.</p>
   {% endif %}
@@ -129,14 +70,6 @@
     }
     var opSymbol = { '+': '+', '-': '−', '*': '×', '/': '÷' };
 
-    function setValue(input, value) {
-      input.value = value;
-      // Programmatic changes need to fire 'input' explicitly so the group
-      // subtotal listeners below (and anything else watching) pick them up,
-      // the same as if the user had typed the value.
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-
     document.querySelectorAll('.calc').forEach(function (calc) {
       var input = calc.querySelector('.calc-input');
       var hint = calc.querySelector('.calc-hint');
@@ -155,7 +88,7 @@
           if (op === 'C') {
             accumulator = null;
             pendingOp = null;
-            setValue(input, '');
+            input.value = '';
             hint.textContent = '';
             input.focus();
             return;
@@ -165,7 +98,7 @@
 
           if (op === '=') {
             if (pendingOp !== null && accumulator !== null) {
-              setValue(input, round(compute(accumulator, pendingOp, value)));
+              input.value = round(compute(accumulator, pendingOp, value));
               hint.textContent = '';
             }
             accumulator = null;
@@ -179,28 +112,10 @@
             : value;
           pendingOp = op;
           hint.textContent = accumulator + ' ' + opSymbol[op];
-          setValue(input, '');
+          input.value = '';
           input.focus();
         });
       });
-    });
-
-    // Live bottom-up group totals: sum this group's amount inputs as they change.
-    document.querySelectorAll('.budget-group').forEach(function (groupEl) {
-      var totalEl = groupEl.querySelector('[data-group-total]');
-      var inputs = groupEl.querySelectorAll('.budget-amount-input');
-
-      function recompute() {
-        var sum = 0;
-        inputs.forEach(function (inp) {
-          var v = parseFloat(inp.value);
-          if (!isNaN(v)) sum += v;
-        });
-        totalEl.textContent = sum.toFixed(2);
-      }
-
-      inputs.forEach(function (inp) { inp.addEventListener('input', recompute); });
-      recompute();
     });
   })();
   </script>

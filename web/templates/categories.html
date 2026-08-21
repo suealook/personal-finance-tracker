@@ -2,72 +2,91 @@
 {% block title %}Categories{% endblock %}
 {% block content %}
   <h1>Categories</h1>
-  <p class="muted">Priority order top to bottom. Use &uarr;/&darr; to reorder.</p>
+  <p class="muted">
+    Arrows reorder priority. Click a status pill to activate or deactivate.
+    Edit a field and hit Save (lights up once something's changed) to update it.
+  </p>
 
   <form id="bulk-form" method="post" action="{{ url_for('categories_bulk_delete') }}"
         onsubmit="return confirmBulkDelete();"></form>
 
-  <div class="card" id="bulk-actions" style="display: none; padding: 0.75rem 1rem; display: flex; align-items: center; gap: 1rem;">
+  <div class="card" id="bulk-actions" style="display: none; padding: 0.75rem 1rem; align-items: center; gap: 1rem;">
     <span id="bulk-count" class="muted">0 selected</span>
     <button type="submit" form="bulk-form" class="btn-red">Delete selected</button>
   </div>
 
   <div class="table-scroll">
-  <table class="responsive-table">
+  <table class="categories-table">
     <thead>
       <tr>
         <th><input type="checkbox" id="select-all" title="Select all"></th>
-        <th></th><th>Category</th><th>Group</th><th>Type</th><th>Active</th><th>Notes</th><th>Actions</th>
+        <th>Category</th><th>Group</th><th>Type</th><th>Status</th><th>Notes</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for c in categories %}
       <tr>
         <td data-label="Select">
-          <input type="checkbox" class="bulk-select" name="category_names" value="{{ c.Category }}" form="bulk-form">
+          <div class="control-cluster">
+            <input type="checkbox" class="bulk-select" name="category_names" value="{{ c.Category }}" form="bulk-form">
+            <div class="reorder-group">
+              <form method="post" action="{{ url_for('categories_move_up') }}" style="margin: 0;">
+                <input type="hidden" name="name" value="{{ c.Category }}">
+                <button type="submit" class="reorder-btn" title="Move up">&uarr;</button>
+              </form>
+              <form method="post" action="{{ url_for('categories_move_down') }}" style="margin: 0;">
+                <input type="hidden" name="name" value="{{ c.Category }}">
+                <button type="submit" class="reorder-btn" title="Move down">&darr;</button>
+              </form>
+            </div>
+          </div>
         </td>
-        <td class="nowrap" data-label="Reorder">
-          <form method="post" action="{{ url_for('categories_move_up') }}" class="inline-form">
-            <input type="hidden" name="name" value="{{ c.Category }}">
-            <button type="submit" title="Move up">&uarr;</button>
-          </form>
-          <form method="post" action="{{ url_for('categories_move_down') }}" class="inline-form">
-            <input type="hidden" name="name" value="{{ c.Category }}">
-            <button type="submit" title="Move down">&darr;</button>
-          </form>
+        <td data-label="Category">
+          <input type="text" name="new_name" value="{{ c.Category }}" form="edit-{{ loop.index }}"
+                 class="editable-field category-name-input">
         </td>
-        <td data-label="Category">{{ c.Category }}</td>
-        <td data-label="Group"><input type="text" name="group" value="{{ c.Group }}" form="edit-{{ loop.index }}" placeholder="(none)"></td>
+        <td data-label="Group">
+          <input type="text" name="group" value="{{ c.Group }}" form="edit-{{ loop.index }}"
+                 class="editable-field group-input" placeholder="No group">
+        </td>
         <td data-label="Type">
-          <select name="type" form="edit-{{ loop.index }}">
+          <select name="type" form="edit-{{ loop.index }}" class="editable-field type-select type-{{ c.Type|lower }}">
             {% for t in ["Expense", "Income", "Savings", "Debt"] %}
             <option value="{{ t }}" {% if c.Type == t %}selected{% endif %}>{{ t }}</option>
             {% endfor %}
           </select>
         </td>
-        <td data-label="Active">{{ c.Active }}</td>
-        <td data-label="Notes"><input type="text" name="notes" value="{{ c.Notes }}" form="edit-{{ loop.index }}"></td>
-        <td data-label="Actions">
-          <form id="edit-{{ loop.index }}" method="post" action="{{ url_for('categories_edit') }}" class="inline-form">
-            <input type="hidden" name="name" value="{{ c.Category }}">
-            <button type="submit">Save</button>
-          </form>
+        <td data-label="Status">
           {% if c.Active == 'TRUE' %}
-          <form method="post" action="{{ url_for('categories_delete') }}" class="inline-form">
+          <form method="post" action="{{ url_for('categories_delete') }}">
             <input type="hidden" name="name" value="{{ c.Category }}">
-            <button type="submit" class="btn-red">Deactivate</button>
+            <button type="submit" class="status-pill status-active" title="Active — click to deactivate">Active</button>
           </form>
           {% else %}
-          <form method="post" action="{{ url_for('categories_activate') }}" class="inline-form">
+          <form method="post" action="{{ url_for('categories_activate') }}">
             <input type="hidden" name="name" value="{{ c.Category }}">
-            <button type="submit" class="btn-green">Activate</button>
-          </form>
-          <form method="post" action="{{ url_for('categories_remove') }}" class="inline-form"
-                onsubmit="return confirm('Permanently remove {{ c.Category }}? This can\'t be undone (past transactions keep showing this category name, but you won\'t be able to log new ones under it).');">
-            <input type="hidden" name="name" value="{{ c.Category }}">
-            <button type="submit" class="btn-red">Remove</button>
+            <button type="submit" class="status-pill status-inactive" title="Inactive — click to reactivate">Inactive</button>
           </form>
           {% endif %}
+        </td>
+        <td data-label="Notes">
+          <input type="text" name="notes" value="{{ c.Notes }}" form="edit-{{ loop.index }}"
+                 class="editable-field notes-input" placeholder="&mdash;">
+        </td>
+        <td data-label="Actions">
+          <div class="row-actions">
+            <form id="edit-{{ loop.index }}" method="post" action="{{ url_for('categories_edit') }}">
+              <input type="hidden" name="name" value="{{ c.Category }}">
+              <button type="submit" class="save-btn">Save</button>
+            </form>
+            {% if c.Active != 'TRUE' %}
+            <form method="post" action="{{ url_for('categories_remove') }}"
+                  onsubmit="return confirm('Permanently remove {{ c.Category }}? This can\'t be undone (past transactions keep showing this category name, but you won\'t be able to log new ones under it).');">
+              <input type="hidden" name="name" value="{{ c.Category }}">
+              <button type="submit" class="icon-btn-remove" title="Permanently remove">&times;</button>
+            </form>
+            {% endif %}
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -123,6 +142,26 @@
     };
 
     refresh();
+
+    // Save buttons stay dimmed until their row actually changes, so a page
+    // full of untouched rows doesn't read as 37 equally-urgent prompts.
+    function markDirty(field) {
+      var formId = field.getAttribute('form');
+      var btn = document.querySelector('#' + CSS.escape(formId) + ' .save-btn');
+      if (btn) btn.classList.add('dirty');
+    }
+    document.querySelectorAll('.editable-field').forEach(function (field) {
+      field.addEventListener('input', function () { markDirty(field); });
+      field.addEventListener('change', function () { markDirty(field); });
+    });
+
+    // Recolor the type badge live as a new type is picked, so the select
+    // itself previews the category it's about to become.
+    document.querySelectorAll('.type-select').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        sel.className = 'editable-field type-select type-' + sel.value.toLowerCase();
+      });
+    });
   })();
   </script>
 {% endblock %}
