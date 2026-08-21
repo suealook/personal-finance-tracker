@@ -1,6 +1,8 @@
 .env
 data/credentials/
 data/reports_cache/
+data/heartbeat_*.txt
+data/service_account.json
 __pycache__/
 *.pyc
 venv/
