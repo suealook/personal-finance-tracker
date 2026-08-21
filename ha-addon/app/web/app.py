@@ -1,9 +1,11 @@
 import bleach
+import hashlib
 import io
 import secrets
 import threading
 import time
 from datetime import date, datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
 
 import markdown as markdown_lib
@@ -121,6 +123,16 @@ def create_app() -> Flask:
         )
 
     app = Flask(__name__)
+
+    # Cache-busting for static assets: without this, style.css is served from a
+    # fixed URL forever, so a browser that already cached an old copy has no
+    # signal to ever refetch it after an update. Hashing the file content means
+    # the URL only changes when the CSS actually does.
+    css_path = Path(app.static_folder) / "style.css"
+    try:
+        app.jinja_env.globals["asset_version"] = hashlib.sha256(css_path.read_bytes()).hexdigest()[:10]
+    except OSError:
+        app.jinja_env.globals["asset_version"] = str(int(WEB_STARTED_AT.timestamp()))
 
     @app.before_request
     def _security_gate():
@@ -315,6 +327,22 @@ def create_app() -> Flask:
         name = request.form.get("name", "")
         if name:
             categories_module.remove_category(name)
+        return redirect(url_for("categories_page"))
+
+    @app.route("/categories/bulk_delete", methods=["POST"])
+    def categories_bulk_delete():
+        names = request.form.getlist("category_names")
+        by_name = {c["Category"]: c for c in categories_module.get_all_categories()}
+        for name in names:
+            cat = by_name.get(name)
+            if not cat:
+                continue
+            # Same rule as the single-row buttons: active -> deactivate (soft,
+            # reversible), already-inactive -> permanently remove.
+            if str(cat.get("Active", "")).strip().upper() == "TRUE":
+                categories_module.deactivate_category(name)
+            else:
+                categories_module.remove_category(name)
         return redirect(url_for("categories_page"))
 
     @app.route("/reports")

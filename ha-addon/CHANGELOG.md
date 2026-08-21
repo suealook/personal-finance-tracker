@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.1
+
+- **Actually fix** the categories page horizontal scroller (3rd attempt): the
+  card-stacking layout no longer depends on a viewport-width breakpoint at
+  all — it always stacks, at any screen size, so there's no threshold left
+  to mistune.
+- Static CSS is now served with a content-hash query string
+  (`style.css?v=<hash>`), so a browser that cached an old copy is guaranteed
+  to refetch after an update — a stale cache was a real candidate for why
+  earlier CSS fixes didn't visibly land.
+- Categories page: added multi-select checkboxes + a "Delete selected"
+  button with a confirm dialog. Matches the existing per-row semantics —
+  active categories are deactivated (reversible), already-inactive ones are
+  permanently removed.
+
 ## 0.3.0 — security hardening + usage/cost tracking
 
 Full audit found the dashboard had **no authentication at all** while being

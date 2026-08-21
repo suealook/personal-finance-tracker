@@ -300,40 +300,42 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
   .stat-value { font-size: 1.4rem; }
 }
 
-/* Responsive table: stacks into cards instead of scrolling horizontally.
-   Wider threshold than the general phone breakpoint above — this particular
-   table (7 columns, 2 text inputs, a select, multiple buttons) is cramped as
-   a real table well past phone width, so it switches to cards earlier. */
-@media (max-width: 900px) {
-  .responsive-table thead { display: none; }
-  .responsive-table, .responsive-table tbody, .responsive-table tr, .responsive-table td {
-    display: block;
-    width: 100%;
-  }
-  .responsive-table tr {
-    background: var(--panel-strong);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    margin-bottom: 0.75rem;
-    padding: 0.4rem 0;
-  }
-  .responsive-table td {
-    border-bottom: none;
-    padding: 0.4rem 0.9rem;
-    white-space: normal;
-  }
-  .responsive-table td::before {
-    content: attr(data-label);
-    display: block;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-    margin-bottom: 0.3rem;
-  }
-  .responsive-table td input,
-  .responsive-table td select {
-    width: 100%;
-  }
+/* Responsive table: always stacks into cards, at every viewport width — no
+   breakpoint to mistune. This table (7 columns, 2 text inputs, a select,
+   multiple buttons) never lays out comfortably as a real table regardless of
+   window size, so it doesn't try to; a plain table view is one thing this
+   layout structurally never does. */
+.responsive-table thead { display: none; }
+.responsive-table, .responsive-table tbody, .responsive-table tr, .responsive-table td {
+  display: block;
+  width: 100%;
+}
+.responsive-table tr {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  margin-bottom: 0.75rem;
+  padding: 0.4rem 0;
+}
+.responsive-table td {
+  border-bottom: none;
+  padding: 0.4rem 0.9rem;
+  white-space: normal;
+}
+.responsive-table td::before {
+  content: attr(data-label);
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+.responsive-table td input,
+.responsive-table td select {
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .responsive-table tr { max-width: 560px; }
 }

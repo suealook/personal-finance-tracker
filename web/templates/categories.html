@@ -4,12 +4,28 @@
   <h1>Categories</h1>
   <p class="muted">Priority order top to bottom. Use &uarr;/&darr; to reorder.</p>
 
+  <form id="bulk-form" method="post" action="{{ url_for('categories_bulk_delete') }}"
+        onsubmit="return confirmBulkDelete();"></form>
+
+  <div class="card" id="bulk-actions" style="display: none; padding: 0.75rem 1rem; display: flex; align-items: center; gap: 1rem;">
+    <span id="bulk-count" class="muted">0 selected</span>
+    <button type="submit" form="bulk-form" class="btn-red">Delete selected</button>
+  </div>
+
   <div class="table-scroll">
   <table class="responsive-table">
-    <thead><tr><th></th><th>Category</th><th>Group</th><th>Type</th><th>Active</th><th>Notes</th><th>Actions</th></tr></thead>
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="select-all" title="Select all"></th>
+        <th></th><th>Category</th><th>Group</th><th>Type</th><th>Active</th><th>Notes</th><th>Actions</th>
+      </tr>
+    </thead>
     <tbody>
       {% for c in categories %}
       <tr>
+        <td data-label="Select">
+          <input type="checkbox" class="bulk-select" name="category_names" value="{{ c.Category }}" form="bulk-form">
+        </td>
         <td class="nowrap" data-label="Reorder">
           <form method="post" action="{{ url_for('categories_move_up') }}" class="inline-form">
             <input type="hidden" name="name" value="{{ c.Category }}">
@@ -74,4 +90,39 @@
     <button type="submit">Add</button>
   </form>
   </div>
+
+  <script>
+  (function () {
+    var checkboxes = Array.prototype.slice.call(document.querySelectorAll('.bulk-select'));
+    var selectAll = document.getElementById('select-all');
+    var bar = document.getElementById('bulk-actions');
+    var countEl = document.getElementById('bulk-count');
+
+    function refresh() {
+      var checked = checkboxes.filter(function (c) { return c.checked; });
+      bar.style.display = checked.length > 0 ? 'flex' : 'none';
+      countEl.textContent = checked.length + (checked.length === 1 ? ' selected' : ' selected');
+      selectAll.checked = checked.length > 0 && checked.length === checkboxes.length;
+      selectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+    }
+
+    checkboxes.forEach(function (cb) { cb.addEventListener('change', refresh); });
+    selectAll.addEventListener('change', function () {
+      checkboxes.forEach(function (cb) { cb.checked = selectAll.checked; });
+      refresh();
+    });
+
+    window.confirmBulkDelete = function () {
+      var checked = checkboxes.filter(function (c) { return c.checked; });
+      if (checked.length === 0) return false;
+      var names = checked.map(function (c) { return c.value; }).join(', ');
+      return confirm(
+        'Delete ' + checked.length + ' categor' + (checked.length === 1 ? 'y' : 'ies') + '?\n\n' + names +
+        '\n\nActive ones are deactivated (reversible); already-inactive ones are permanently removed.'
+      );
+    };
+
+    refresh();
+  })();
+  </script>
 {% endblock %}
