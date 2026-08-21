@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3
+
+- The custom supervisor works, but `TELEGRAM_BOT_TOKEN` came back empty even
+  though Configuration was filled in. Added a one-time startup diagnostic
+  line (presence/absence only, never values) to `config/settings.py` to see
+  exactly what `/data/options.json` looks like at runtime instead of guessing.
+
 ## 0.1.2
 
 - Replace s6-overlay service supervision with a small custom Python

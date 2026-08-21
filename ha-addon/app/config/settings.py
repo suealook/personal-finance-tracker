@@ -65,3 +65,13 @@ WEB_BIND_HOST = os.environ.get("WEB_BIND_HOST", "127.0.0.1")
 
 REPORTS_CACHE_DIR = (HA_DATA_DIR if RUNNING_UNDER_HOME_ASSISTANT else BASE_DIR / "data") / "reports_cache"
 HEARTBEAT_DIR = HA_DATA_DIR if RUNNING_UNDER_HOME_ASSISTANT else BASE_DIR / "data"
+
+# Temporary startup diagnostic — prints presence/absence only, never values, so
+# we can see exactly what's happening with /data/options.json without guessing.
+print(
+    f"[settings] RUNNING_UNDER_HOME_ASSISTANT={RUNNING_UNDER_HOME_ASSISTANT} "
+    f"options_file_exists={HA_OPTIONS_FILE.exists()} "
+    f"options_keys={sorted(_ha_options.keys())} "
+    f"non_empty_keys={sorted(k for k, v in _ha_options.items() if v)}",
+    flush=True,
+)
