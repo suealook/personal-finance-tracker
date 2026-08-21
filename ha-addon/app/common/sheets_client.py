@@ -320,6 +320,19 @@ def get_last_transaction_for_source(source: str = "telegram") -> Optional[dict]:
     return record
 
 
+def get_transaction_by_id(transaction_id: str) -> Optional[dict]:
+    """Looks up one specific transaction regardless of recency — used by the
+    bot's inline Undo button, which targets the exact row it was attached to
+    rather than "whatever's last" (which could have changed by the time it's tapped)."""
+    tab = SheetTab(TAB_ACTUAL)
+    row = tab.find_row_index(lambda r: r.get("TransactionID") == transaction_id)
+    if row is None:
+        return None
+    record = tab.get_record_at(row)
+    record["_row"] = row
+    return record
+
+
 def undo_transaction(row_index: int):
     SheetTab(TAB_ACTUAL).update_cell(row_index, "Status", "undone")
 

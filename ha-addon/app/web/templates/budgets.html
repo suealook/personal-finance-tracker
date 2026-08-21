@@ -5,6 +5,11 @@
   <form method="get" class="inline-form">
     <label>Month: <input type="month" name="month" value="{{ month }}" onchange="this.form.submit()"></label>
   </form>
+  <form method="post" action="{{ url_for('budgets_copy_previous') }}" class="inline-form"
+        onsubmit="return confirm('Copy {{ prev_month }}\'s budgets into {{ month }}? This overwrites any amounts already set for {{ month }}.');">
+    <input type="hidden" name="month" value="{{ month }}">
+    <button type="submit" class="btn-ghost">Copy from {{ prev_month }}</button>
+  </form>
 
   {% if categories %}
   <form method="post">

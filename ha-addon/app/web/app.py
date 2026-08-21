@@ -262,8 +262,21 @@ def create_app() -> Flask:
         active_categories = categories_module.get_active_categories()
         planned_rows = {r["Category"]: r["PlannedAmount"] for r in sheets_client.get_planned(month)}
         return render_template(
-            "budgets.html", month=month, categories=active_categories, planned=planned_rows
+            "budgets.html",
+            month=month,
+            categories=active_categories,
+            planned=planned_rows,
+            prev_month=previous_month(month),
         )
+
+    @app.route("/budgets/copy_previous", methods=["POST"])
+    def budgets_copy_previous():
+        month = request.form.get("month", current_month())
+        prev = previous_month(month)
+        for row in sheets_client.get_planned(prev):
+            amount = float(row.get("PlannedAmount") or 0)
+            sheets_client.upsert_planned(month, row["Category"], amount, row.get("Notes", ""))
+        return redirect(url_for("budgets", month=month))
 
     @app.route("/categories")
     def categories_page():

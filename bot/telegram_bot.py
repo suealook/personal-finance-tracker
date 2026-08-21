@@ -1,5 +1,6 @@
 import logging
 
+from telegram import BotCommand
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -19,9 +20,26 @@ logger = logging.getLogger(__name__)
 
 HEARTBEAT_INTERVAL_SECONDS = 30
 
+# Single source of truth for slash commands: both the handler registration
+# and Telegram's native "/" command menu read from this table, so the two
+# can never drift out of sync with each other.
+COMMANDS = [
+    ("start", "Show help", handlers.cmd_start),
+    ("help", "Show help", handlers.cmd_help),
+    ("summary", "Month-to-date income and spending", handlers.cmd_summary),
+    ("categories", "List active categories", handlers.cmd_categories),
+    ("addcategory", "Add a category: /addcategory <name> <type>", handlers.cmd_addcategory),
+    ("undo", "Remove the last transaction", handlers.cmd_undo),
+    ("correct", "Fix the last transaction: /correct <field> <value>", handlers.cmd_correct),
+]
+
 
 async def _heartbeat_job(context):
     write_heartbeat("bot")
+
+
+async def _post_init(app: Application):
+    await app.bot.set_my_commands([BotCommand(name, description) for name, description, _ in COMMANDS])
 
 
 def build_application() -> Application:
@@ -30,16 +48,14 @@ def build_application() -> Application:
     if not settings.TELEGRAM_ALLOWED_USER_ID:
         raise RuntimeError("TELEGRAM_ALLOWED_USER_ID is not set — check your .env file.")
 
-    app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
+    app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
 
-    app.add_handler(CommandHandler("start", handlers.cmd_start))
-    app.add_handler(CommandHandler("help", handlers.cmd_help))
-    app.add_handler(CommandHandler("undo", handlers.cmd_undo))
-    app.add_handler(CommandHandler("correct", handlers.cmd_correct))
-    app.add_handler(CommandHandler("categories", handlers.cmd_categories))
-    app.add_handler(CommandHandler("addcategory", handlers.cmd_addcategory))
-    app.add_handler(CommandHandler("summary", handlers.cmd_summary))
+    for name, _description, handler_fn in COMMANDS:
+        app.add_handler(CommandHandler(name, handler_fn))
+
     app.add_handler(CallbackQueryHandler(handlers.on_category_confirm, pattern=r"^cat_confirm:"))
+    app.add_handler(CallbackQueryHandler(handlers.on_undo_button, pattern=r"^undo_txn:"))
+    app.add_handler(MessageHandler(filters.PHOTO, handlers.on_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.on_message))
 
     if app.job_queue is not None:

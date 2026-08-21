@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 — five convenience features
+
+- **Receipt photo logging**: send the bot a photo of a receipt (with or
+  without a caption) and it logs the transaction the same way a text
+  message would — same tool schema, same category-confirmation flow.
+  `common/llm_parse.py` refactored so text and photo parsing share one
+  system-prompt builder and one extraction/usage-tracking call, instead of
+  duplicating either.
+- **Inline Undo button**: every transaction confirmation now carries a
+  one-tap Undo button, keyed to that specific transaction's ID (not
+  "whatever's last") so it stays correct even if you log something else
+  before tapping it.
+- **Copy last month's budgets**: one button on `/budgets` clones the
+  previous month's planned amounts into the selected month, behind a
+  confirm dialog since it overwrites.
+- **Add to Home Screen**: a proper web manifest + generated icons, so the
+  dashboard can be added as a home-screen app on phones.
+- **Telegram command menu**: `/help` and Telegram's native "/" command menu
+  now both read from one command table in `bot/telegram_bot.py`, so they
+  can't drift out of sync with each other.
+
 ## 0.3.1
 
 - **Actually fix** the categories page horizontal scroller (3rd attempt): the

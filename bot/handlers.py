@@ -9,13 +9,13 @@ from common import categories as categories_module
 from common import sheets_client
 from common.dateutil_helpers import current_month, month_bounds, now_str
 from common.llm_analysis import quick_tip
-from common.llm_parse import parse_transaction
+from common.llm_parse import parse_transaction, parse_transaction_from_image
 
 logger = logging.getLogger(__name__)
 
 HELP_TEXT = (
-    "Just text me a transaction, e.g. \"spent 12.50 on coffee at starbucks\" or "
-    "\"35 groceries yesterday\" or \"got paid 2000 salary\".\n\n"
+    "Text me a transaction (\"spent 12.50 on coffee at starbucks\") or send a photo "
+    "of a receipt — either logs it.\n\n"
     "Commands:\n"
     "/undo - remove the last transaction I logged\n"
     "/correct <field> <value> - fix the last transaction, e.g. /correct amount 15.00\n"
@@ -50,8 +50,52 @@ def _confirmation_text(row: dict) -> str:
     note_suffix = f" ({row['Note']})" if row.get("Note") else ""
     return (
         f"Logged: {row['Amount']} - {row['Category']}{note_suffix} on {row['Date']}.\n"
-        "/undo to remove, /correct <field> <value> to fix."
+        "Tap Undo below, or /correct <field> <value> to fix."
     )
+
+
+def _undo_keyboard(transaction_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("Undo", callback_data=f"undo_txn:{transaction_id}")]])
+
+
+async def _finalize_transaction(parsed: dict, raw_row_index: int, msg_id: str, reply_fn) -> dict:
+    """Writes the transaction and sends the confirmation (with an Undo button)
+    via whichever mechanism the caller needs — a new message (on_message,
+    on_photo) or editing an existing one (on_category_confirm)."""
+    row = _write_transaction(parsed, raw_row_index, msg_id)
+    await reply_fn(_confirmation_text(row), _undo_keyboard(row["TransactionID"]))
+    return row
+
+
+async def _process_parsed(parsed: dict, raw_row_index: int, msg_id: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shared continuation once a message or photo has been parsed into a
+    candidate transaction: confirm a brand-new category before writing
+    anything, otherwise finalize immediately."""
+    if parsed.get("category_is_new"):
+        context.chat_data["pending"] = {
+            "parsed": parsed,
+            "raw_row_index": raw_row_index,
+            "msg_id": msg_id,
+        }
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("Yes, create it", callback_data="cat_confirm:yes"),
+                    InlineKeyboardButton("No, cancel", callback_data="cat_confirm:no"),
+                ]
+            ]
+        )
+        await update.message.reply_text(
+            f"'{parsed['category']}' isn't an existing category "
+            f"(type: {parsed.get('category_type', 'Expense')}). Create it?",
+            reply_markup=keyboard,
+        )
+        return
+
+    async def _reply(text, markup):
+        await update.message.reply_text(text, reply_markup=markup)
+
+    await _finalize_transaction(parsed, raw_row_index, msg_id, _reply)
 
 
 @restricted
@@ -83,29 +127,39 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if parsed.get("category_is_new"):
-        context.chat_data["pending"] = {
-            "parsed": parsed,
-            "raw_row_index": raw_row_index,
-            "msg_id": str(update.message.message_id),
-        }
-        keyboard = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("Yes, create it", callback_data="cat_confirm:yes"),
-                    InlineKeyboardButton("No, cancel", callback_data="cat_confirm:no"),
-                ]
-            ]
-        )
+    await _process_parsed(parsed, raw_row_index, str(update.message.message_id), update, context)
+
+
+@restricted
+async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    caption = (update.message.caption or "").strip()
+
+    raw_row = {
+        "Timestamp": now_str(),
+        "TelegramUserID": str(user.id),
+        "TelegramUsername": user.username or "",
+        "RawText": "[receipt photo]" + (f": {caption}" if caption else ""),
+        "ParseStatus": "pending",
+        "LinkedTransactionID": "",
+    }
+    raw_row_index = sheets_client.append_raw_log(raw_row)
+
+    try:
+        photo = update.message.photo[-1]  # largest available size
+        photo_file = await context.bot.get_file(photo.file_id)
+        image_bytes = bytes(await photo_file.download_as_bytearray())
+        active_categories = categories_module.get_active_categories()
+        parsed = parse_transaction_from_image(image_bytes, active_categories, caption=caption or None)
+    except Exception:
+        logger.exception("Failed to parse receipt photo")
+        sheets_client.update_raw_log(raw_row_index, "failed")
         await update.message.reply_text(
-            f"'{parsed['category']}' isn't an existing category "
-            f"(type: {parsed.get('category_type', 'Expense')}). Create it?",
-            reply_markup=keyboard,
+            "Couldn't read that receipt — saved to the raw log so nothing's lost."
         )
         return
 
-    row = _write_transaction(parsed, raw_row_index, str(update.message.message_id))
-    await update.message.reply_text(_confirmation_text(row))
+    await _process_parsed(parsed, raw_row_index, str(update.message.message_id), update, context)
 
 
 @restricted
@@ -125,11 +179,27 @@ async def on_category_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         except ValueError:
             pass  # category already exists (race with /addcategory) - fine, just use it
-        row = _write_transaction(parsed, pending["raw_row_index"], pending["msg_id"])
-        await query.edit_message_text(_confirmation_text(row))
+
+        async def _reply(text, markup):
+            await query.edit_message_text(text, reply_markup=markup)
+
+        await _finalize_transaction(parsed, pending["raw_row_index"], pending["msg_id"], _reply)
     else:
         sheets_client.update_raw_log(pending["raw_row_index"], "failed")
         await query.edit_message_text("Cancelled. Nothing logged.")
+
+
+@restricted
+async def on_undo_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    transaction_id = query.data.split(":", 1)[1]
+    txn = sheets_client.get_transaction_by_id(transaction_id)
+    if not txn or txn.get("Status") != "active":
+        await query.edit_message_text("Already undone (or not found).")
+        return
+    sheets_client.undo_transaction(txn["_row"])
+    await query.edit_message_text(f"Undone: {txn['Amount']} - {txn['Category']} on {txn['Date']}.")
 
 
 @restricted
