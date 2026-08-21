@@ -10,13 +10,26 @@
   <form method="post">
     <input type="hidden" name="month" value="{{ month }}">
     <div class="table-scroll">
-    <table>
+    <table class="responsive-table">
       <thead><tr><th>Category</th><th>Planned amount</th></tr></thead>
       <tbody>
         {% for c in categories %}
         <tr>
-          <td>{{ c }}</td>
-          <td><input type="number" step="0.01" name="amount_{{ c }}" value="{{ planned.get(c, '') }}"></td>
+          <td data-label="Category">{{ c }}</td>
+          <td data-label="Planned amount">
+            <div class="calc">
+              <input type="number" step="0.01" inputmode="decimal" class="calc-input" name="amount_{{ c }}" value="{{ planned.get(c, '') }}" placeholder="0.00">
+              <span class="calc-hint"></span>
+              <div class="calc-ops">
+                <button type="button" class="calc-btn" data-op="+" title="Add">+</button>
+                <button type="button" class="calc-btn" data-op="-" title="Subtract">&minus;</button>
+                <button type="button" class="calc-btn" data-op="*" title="Multiply">&times;</button>
+                <button type="button" class="calc-btn" data-op="/" title="Divide">&divide;</button>
+                <button type="button" class="calc-btn calc-eq" data-op="=" title="Equals">=</button>
+                <button type="button" class="calc-btn calc-clear" data-op="C" title="Clear">C</button>
+              </div>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -27,4 +40,70 @@
   {% else %}
   <p>No active categories yet. <a href="{{ url_for('categories_page') }}">Add some first</a>.</p>
   {% endif %}
+
+  <script>
+  (function () {
+    function round(n) {
+      return Math.round((n + Number.EPSILON) * 100) / 100;
+    }
+    function compute(a, op, b) {
+      switch (op) {
+        case '+': return a + b;
+        case '-': return a - b;
+        case '*': return a * b;
+        case '/': return b === 0 ? a : a / b;
+        default: return b;
+      }
+    }
+    var opSymbol = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+
+    document.querySelectorAll('.calc').forEach(function (calc) {
+      var input = calc.querySelector('.calc-input');
+      var hint = calc.querySelector('.calc-hint');
+      var accumulator = null;
+      var pendingOp = null;
+
+      function currentValue() {
+        var v = parseFloat(input.value);
+        return isNaN(v) ? 0 : v;
+      }
+
+      calc.querySelectorAll('.calc-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var op = btn.dataset.op;
+
+          if (op === 'C') {
+            accumulator = null;
+            pendingOp = null;
+            input.value = '';
+            hint.textContent = '';
+            input.focus();
+            return;
+          }
+
+          var value = currentValue();
+
+          if (op === '=') {
+            if (pendingOp !== null && accumulator !== null) {
+              input.value = round(compute(accumulator, pendingOp, value));
+              hint.textContent = '';
+            }
+            accumulator = null;
+            pendingOp = null;
+            input.focus();
+            return;
+          }
+
+          accumulator = (pendingOp !== null && accumulator !== null)
+            ? round(compute(accumulator, pendingOp, value))
+            : value;
+          pendingOp = op;
+          hint.textContent = accumulator + ' ' + opSymbol[op];
+          input.value = '';
+          input.focus();
+        });
+      });
+    });
+  })();
+  </script>
 {% endblock %}

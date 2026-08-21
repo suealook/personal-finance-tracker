@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+- Categories page: widened the mobile-card breakpoint from 640px to 900px —
+  it was still falling back to a horizontally-scrolling table at in-between
+  widths (tablets, resized browser windows).
+- Budgets page: added an inline +/−/×/÷/= calculator next to each category's
+  planned-amount field, so you can build up a number (e.g. rent + utilities)
+  without doing the math elsewhere first. Click Save as usual once you're
+  happy with the number.
+
 ## 0.1.4
 
 - Fix `python-telegram-bot[job-queue]` extra missing from `requirements.txt` —

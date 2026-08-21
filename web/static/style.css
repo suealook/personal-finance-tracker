@@ -255,6 +255,22 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 
 .empty-state { color: var(--muted); font-size: 0.9rem; padding: 0.5rem 0; }
 
+/* Inline calculator, used on the budgets page */
+.calc { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.calc-input { width: 92px; }
+.calc-hint { font-size: 0.72rem; color: var(--muted); min-width: 3.5ch; }
+.calc-ops { display: flex; gap: 0.2rem; }
+.calc-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+  border-radius: 6px;
+}
+.calc-eq { background: var(--status-good); }
+.calc-clear { background: var(--status-critical); }
+
 /* ---- AI insights card ------------------------------------------------------ */
 .insights-list { list-style: none; margin: 0.75rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
 .insights-list li {
@@ -282,8 +298,13 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
   nav { flex-wrap: wrap; gap: 0.85rem; border-radius: 20px; }
   .bar-row { grid-template-columns: 1fr; gap: 0.3rem; }
   .stat-value { font-size: 1.4rem; }
+}
 
-  /* Responsive table: stacks into cards instead of scrolling horizontally. */
+/* Responsive table: stacks into cards instead of scrolling horizontally.
+   Wider threshold than the general phone breakpoint above — this particular
+   table (7 columns, 2 text inputs, a select, multiple buttons) is cramped as
+   a real table well past phone width, so it switches to cards earlier. */
+@media (max-width: 900px) {
   .responsive-table thead { display: none; }
   .responsive-table, .responsive-table tbody, .responsive-table tr, .responsive-table td {
     display: block;
