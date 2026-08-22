@@ -18,6 +18,11 @@
     <a href="{{ url_for('reports_page') }}" class="{{ 'active' if request.endpoint in ('reports_page', 'report_detail') }}">Reports</a>
     <a href="{{ url_for('export_page') }}" class="{{ 'active' if request.endpoint in ('export_page', 'export_download') }}">Export</a>
     <a href="{{ url_for('update_page') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('update_') }}">Update</a>
+    {% if dashboard_password_set %}
+    <form method="post" action="{{ url_for('logout') }}" class="inline-form" style="margin-left: auto;">
+      <button type="submit" class="btn-ghost">Log out</button>
+    </form>
+    {% endif %}
   </nav>
   <main>
     {% block content %}{% endblock %}

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.7 — real login page instead of the browser's Basic Auth popup
+
+- **New login page** (`/login`) replaces the raw browser Basic Auth prompt:
+  username + password fields, a proper session cookie (signed with a
+  random key generated once and persisted in the add-on's data volume —
+  never typed by anyone, never in git), a "Forgot your password?" note
+  pointing at the add-on's own Configuration tab (the only place the
+  password is actually stored), and a 30-day session so you're not asked
+  to sign in on every visit.
+- **New optional `dashboard_username` config option** — if left blank, the
+  login page accepts any username alongside the correct password (same
+  behavior as before). Both username and password are compared with
+  constant-time comparison, same as the old Basic Auth check.
+- **Login attempts are rate-limited**: 5 failed attempts from the same
+  source lock out further attempts for 30 seconds, blunting brute-force
+  guessing now that login goes through a real form instead of the
+  browser's own auth dialog.
+- Local dev behavior is unchanged: with no `dashboard_password` set (the
+  default when not running under Home Assistant), every page loads
+  directly with no login screen at all, same as before.
+
 ## 0.4.6 — full infrastructure review: 10 fixes (security, races, reliability)
 
 A user-requested full review across security, every file, and architecture

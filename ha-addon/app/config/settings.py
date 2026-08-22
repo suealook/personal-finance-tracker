@@ -1,5 +1,6 @@
 import json
 import os
+import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -69,6 +70,33 @@ WEB_BIND_HOST = os.environ.get("WEB_BIND_HOST", "127.0.0.1")
 # (fail-closed) in web/app.py specifically — not here, since this module is
 # also imported by the bot process, which has no need for this password.
 DASHBOARD_PASSWORD = _get("dashboard_password", "DASHBOARD_PASSWORD")
+# Optional — if blank, the login page accepts any username alongside the
+# correct password (password-only, same as the old Basic Auth behavior).
+DASHBOARD_USERNAME = _get("dashboard_username", "DASHBOARD_USERNAME")
 
 REPORTS_CACHE_DIR = (HA_DATA_DIR if RUNNING_UNDER_HOME_ASSISTANT else BASE_DIR / "data") / "reports_cache"
 HEARTBEAT_DIR = HA_DATA_DIR if RUNNING_UNDER_HOME_ASSISTANT else BASE_DIR / "data"
+
+
+def _get_or_create_secret_key() -> str:
+    """A random key for signing session cookies, generated once and persisted
+    to disk so sessions survive restarts/updates — never typed by the user,
+    never in git, never in chat, unlike DASHBOARD_PASSWORD above."""
+    path = HEARTBEAT_DIR / "flask_secret_key"
+    try:
+        if path.exists():
+            existing = path.read_text(encoding="utf-8").strip()
+            if existing:
+                return existing
+        path.parent.mkdir(parents=True, exist_ok=True)
+        key = secrets.token_hex(32)
+        path.write_text(key, encoding="utf-8")
+        return key
+    except OSError:
+        # Falls back to a key that's regenerated every process start (every
+        # existing session gets logged out on restart) rather than crashing
+        # the app if the data directory is somehow unwritable.
+        return secrets.token_hex(32)
+
+
+FLASK_SECRET_KEY = _get_or_create_secret_key()

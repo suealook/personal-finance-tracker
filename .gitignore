@@ -4,6 +4,7 @@ data/reports_cache/
 data/heartbeat_*.txt
 data/service_account.json
 data/claude_usage.json
+data/flask_secret_key
 __pycache__/
 *.pyc
 venv/

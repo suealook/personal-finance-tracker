@@ -187,6 +187,37 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 
+/* ---- Login page ------------------------------------------------------------ */
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+.login-card {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 2rem 1.75rem;
+}
+.login-title { margin: 0; font-size: 1.3rem; letter-spacing: -0.01em; text-align: center; }
+.login-subtitle { margin: -0.5rem 0 0.3rem; text-align: center; font-size: 0.88rem; }
+.login-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--muted); }
+.login-field input { width: 100%; }
+.login-card button[type="submit"] { width: 100%; padding: 0.55rem; margin-top: 0.2rem; }
+.login-error {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--status-critical) 14%, var(--panel-strong));
+  color: var(--status-critical);
+  font-size: 0.85rem;
+}
+.login-forgot { margin: 0.4rem 0 0; font-size: 0.78rem; text-align: center; line-height: 1.5; }
+
 /* ---- Stat tiles ------------------------------------------------------------ */
 .stat-grid {
   display: grid;

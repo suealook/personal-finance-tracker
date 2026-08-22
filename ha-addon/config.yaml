@@ -1,5 +1,5 @@
 name: "Personal Finance Tracker"
-version: "0.4.6"
+version: "0.4.7"
 slug: "personal_finance"
 description: "Telegram-logged budget tracker with a local dashboard and Claude-powered insights"
 url: "https://github.com/suealook/personal-finance-tracker"
@@ -21,6 +21,7 @@ options:
   google_service_account_json: ""
   anthropic_api_key: ""
   claude_model: "claude-sonnet-5"
+  dashboard_username: ""
   dashboard_password: ""
 schema:
   telegram_bot_token: "password"
@@ -29,4 +30,5 @@ schema:
   google_service_account_json: "str"
   anthropic_api_key: "password"
   claude_model: "str"
+  dashboard_username: "str"
   dashboard_password: "password"

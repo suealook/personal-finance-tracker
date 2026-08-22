@@ -4,13 +4,13 @@ import io
 import secrets
 import threading
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 import markdown as markdown_lib
 import pandas as pd
-from flask import Flask, Response, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_file, session, url_for
 
 from common import categories as categories_module
 from common import sheets_client
@@ -24,6 +24,8 @@ from config import settings
 SPARKLINE_MONTHS = 6
 MAX_GROUP_SLOTS = 6  # + one folded "Other" bucket = 7 visual segments max
 LLM_CALL_COOLDOWN_SECONDS = 10  # guards /api/insights and /reports/generate against cost-abuse loops
+LOGIN_MAX_ATTEMPTS = 5           # failed attempts allowed per source IP...
+LOGIN_LOCKOUT_SECONDS = 30       # ...within this window, before a cooldown kicks in
 
 ALLOWED_REPORT_TAGS = [
     "p", "br", "strong", "em", "ul", "ol", "li", "h1", "h2", "h3", "h4",
@@ -36,6 +38,7 @@ BOT_HEARTBEAT_RUNNING_SECONDS = 90    # < this since last heartbeat: bot is fine
 BOT_HEARTBEAT_STALE_SECONDS = 180     # < this: bot may be restarting/hung; >= this: not responding
 
 _last_llm_call_at: dict[str, float] = {}
+_login_failures: dict[str, list[float]] = {}
 
 
 def _llm_rate_limited(key: str) -> bool:
@@ -46,6 +49,21 @@ def _llm_rate_limited(key: str) -> bool:
         return True
     _last_llm_call_at[key] = now
     return False
+
+
+def _login_locked_out(source: str) -> bool:
+    """True if `source` (the requester's IP) has failed to log in
+    LOGIN_MAX_ATTEMPTS times within LOGIN_LOCKOUT_SECONDS — blunts password
+    brute-forcing now that login goes through a real form instead of the
+    browser's own Basic Auth prompt."""
+    now = time.time()
+    recent = [t for t in _login_failures.get(source, []) if now - t < LOGIN_LOCKOUT_SECONDS]
+    _login_failures[source] = recent
+    return len(recent) >= LOGIN_MAX_ATTEMPTS
+
+
+def _record_login_failure(source: str):
+    _login_failures.setdefault(source, []).append(time.time())
 
 
 def _bot_status() -> dict:
@@ -159,6 +177,8 @@ def create_app() -> Flask:
         )
 
     app = Flask(__name__)
+    app.secret_key = settings.FLASK_SECRET_KEY
+    app.permanent_session_lifetime = timedelta(days=30)
 
     # Cache-busting for static assets: without this, style.css is served from a
     # fixed URL forever, so a browser that already cached an old copy has no
@@ -169,6 +189,11 @@ def create_app() -> Flask:
         app.jinja_env.globals["asset_version"] = hashlib.sha256(css_path.read_bytes()).hexdigest()[:10]
     except OSError:
         app.jinja_env.globals["asset_version"] = str(int(WEB_STARTED_AT.timestamp()))
+
+    # Just whether a password is configured, never the value itself — lets
+    # base.html show/hide the Log out button without templates touching
+    # settings directly.
+    app.jinja_env.globals["dashboard_password_set"] = bool(settings.DASHBOARD_PASSWORD)
 
     @app.before_request
     def _security_gate():
@@ -190,17 +215,64 @@ def create_app() -> Flask:
             if origin_host != request.host:
                 return Response("Cross-origin request rejected.", status=403)
 
-        # Auth: required whenever a password is configured (always true under
-        # Home Assistant, per the fail-closed check above; optional for local
-        # dev, which is bound to 127.0.0.1 only).
-        if settings.DASHBOARD_PASSWORD:
-            auth = request.authorization
-            if not auth or not secrets.compare_digest(auth.password or "", settings.DASHBOARD_PASSWORD):
-                return Response(
-                    "Authentication required.",
-                    status=401,
-                    headers={"WWW-Authenticate": 'Basic realm="Personal Finance Tracker"'},
+        # Auth: a real login page + signed session cookie, required whenever a
+        # password is configured (always true under Home Assistant, per the
+        # fail-closed check above; optional for local dev, which is bound to
+        # 127.0.0.1 only). /login and static assets stay reachable without a
+        # session so the login page itself — and its CSS — can load at all.
+        if settings.DASHBOARD_PASSWORD and request.endpoint not in ("login", "static") and not session.get("authenticated"):
+            # JS-driven endpoints get a JSON 401 instead of a redirect, so a
+            # session expiring mid-page-load fails cleanly in fetch() instead
+            # of silently handing the caller the login page's HTML.
+            if request.path.startswith("/api/") or request.endpoint in ("update_run", "update_status"):
+                return jsonify({"error": "Authentication required"}), 401
+            next_path = request.full_path if request.query_string else request.path
+            return redirect(url_for("login", next=next_path))
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if not settings.DASHBOARD_PASSWORD:
+            return redirect(url_for("dashboard"))
+
+        next_url = request.values.get("next") or ""
+        error = None
+
+        if request.method == "POST":
+            source = request.remote_addr or "unknown"
+            if _login_locked_out(source):
+                error = f"Too many attempts — wait {LOGIN_LOCKOUT_SECONDS} seconds and try again."
+            else:
+                username = request.form.get("username", "")
+                password = request.form.get("password", "")
+                username_ok = not settings.DASHBOARD_USERNAME or secrets.compare_digest(
+                    username, settings.DASHBOARD_USERNAME
                 )
+                password_ok = secrets.compare_digest(password, settings.DASHBOARD_PASSWORD)
+                if username_ok and password_ok:
+                    session.clear()
+                    session["authenticated"] = True
+                    session.permanent = True
+                    # Only follow a same-site relative path — never an
+                    # attacker-suppliable absolute or protocol-relative URL,
+                    # which would turn this into an open-redirect phishing
+                    # vector for the login form itself.
+                    if next_url.startswith("/") and not next_url.startswith("//") and "\\" not in next_url:
+                        return redirect(next_url)
+                    return redirect(url_for("dashboard"))
+                _record_login_failure(source)
+                error = "Incorrect username or password."
+
+        return render_template(
+            "login.html",
+            error=error,
+            next=next_url,
+            username_required=bool(settings.DASHBOARD_USERNAME),
+        )
+
+    @app.route("/logout", methods=["POST"])
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
 
     @app.route("/")
     def dashboard():
