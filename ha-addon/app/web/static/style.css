@@ -1,36 +1,43 @@
 /* ---- Design tokens ---------------------------------------------------- */
 :root {
-  --bg: #0f1115;
-  --bg-grad-1: #12162090;
-  --bg-grad-2: #0f111500;
-  --panel: rgba(23, 26, 33, 0.62);
-  --panel-solid: #171a21;
-  --panel-strong: rgba(23, 26, 33, 0.82);
-  --text: #e7e9ee;
-  --muted: #898781;
-  --border: rgba(255, 255, 255, 0.10);
-  --gridline: #2c2c2a;
+  /* Cool navy, not neutral gray — every surface below is mixed from this hue
+     family so dark and light stay a matched pair instead of two unrelated
+     palettes. */
+  --bg: #080b13;
+  --bg-grad-1: #0f1526a0;
+  --bg-grad-2: #080b1300;
+  --panel: rgba(15, 20, 32, 0.66);
+  --panel-solid: #10141f;
+  --panel-strong: rgba(17, 22, 35, 0.86);
+  --text: #eef1f8;
+  --muted: #7c86a0;
+  --border: rgba(148, 163, 196, 0.14);
+  --gridline: #232a3d;
 
   /* categorical series (fixed order — see dataviz skill palette.md) */
-  --series-1: #3987e5; /* blue */
-  --series-2: #d95926; /* orange */
-  --series-3: #199e70; /* aqua */
-  --series-4: #c98500; /* yellow */
-  --series-5: #d55181; /* magenta */
-  --series-6: #008300; /* green */
-  --series-7: #9085e9; /* violet */
-  --series-8: #e66767; /* red */
-  --series-other: #898781;
+  --series-1: #4c9eff; /* blue */
+  --series-2: #f0985a; /* orange */
+  --series-3: #22c3a6; /* aqua */
+  --series-4: #e0b23f; /* yellow */
+  --series-5: #e0699b; /* magenta */
+  --series-6: #34d399; /* green */
+  --series-7: #a78bfa; /* violet */
+  --series-8: #f2685f; /* red */
+  --series-other: #7c86a0;
 
   /* status (fixed — never themed, same hex both modes) */
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-serious: #ec835a;
-  --status-critical: #d03b3b;
+  --status-good: #34d399;
+  --status-warning: #f0b429;
+  --status-serious: #f0985a;
+  --status-critical: #f2685f;
 
   --accent: var(--series-1);
+  --accent-purple: var(--series-7);
   --over: var(--status-critical);
   --under: var(--status-good);
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "Consolas", "Roboto Mono", ui-monospace, monospace;
 
   --radius: 18px;
   --blur: 18px;
@@ -38,26 +45,31 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f2f4f8;
+    --bg: #f3f5fa;
     --bg-grad-1: #ffffffb0;
-    --bg-grad-2: #eef1f700;
-    --panel: rgba(255, 255, 255, 0.60);
+    --bg-grad-2: #f3f5fa00;
+    --panel: rgba(255, 255, 255, 0.62);
     --panel-solid: #ffffff;
-    --panel-strong: rgba(255, 255, 255, 0.82);
-    --text: #14161b;
-    --muted: #6b6f78;
-    --border: rgba(11, 11, 11, 0.08);
-    --gridline: #e1e0d9;
+    --panel-strong: rgba(255, 255, 255, 0.84);
+    --text: #131a2c;
+    --muted: #5b6478;
+    --border: rgba(19, 26, 44, 0.09);
+    --gridline: #e2e6f0;
 
-    --series-1: #2a78d6;
-    --series-2: #eb6834;
-    --series-3: #1baf7a;
-    --series-4: #eda100;
-    --series-5: #e87ba4;
-    --series-6: #008300;
-    --series-7: #4a3aa7;
-    --series-8: #e34948;
-    --series-other: #898781;
+    --series-1: #2f7de0;
+    --series-2: #d97a3a;
+    --series-3: #0f9d84;
+    --series-4: #b8860f;
+    --series-5: #c94f81;
+    --series-6: #199e70;
+    --series-7: #7c5cd6;
+    --series-8: #d94b42;
+    --series-other: #5b6478;
+
+    --status-good: #199e70;
+    --status-warning: #b8860f;
+    --status-serious: #d97a3a;
+    --status-critical: #d94b42;
   }
 }
 
@@ -67,14 +79,19 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-ui);
   font-size: 15px;
   background:
     radial-gradient(1100px 620px at 12% -8%, var(--bg-grad-1), var(--bg-grad-2) 60%),
-    radial-gradient(900px 520px at 100% 0%, color-mix(in srgb, var(--series-1) 16%, transparent), transparent 60%),
+    radial-gradient(900px 520px at 100% 0%, color-mix(in srgb, var(--series-1) 14%, transparent), transparent 60%),
     var(--bg);
   background-attachment: fixed;
 }
+
+/* Financial figures line up on their digits wherever they appear — table
+   cells, stat values, chart tooltips — so a column of numbers reads as a
+   column, not a ragged edge. */
+.num, .stat-value, td.num, th.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* ---- Glass utility ------------------------------------------------------ */
 .card, table, .report-body, fieldset {
@@ -91,9 +108,9 @@ body {
 
 nav {
   display: flex;
-  gap: 1.5rem;
+  gap: 0.5rem;
   align-items: center;
-  padding: 0.9rem 1.5rem;
+  padding: 0.6rem 0.7rem 0.6rem 1rem;
   margin: 1rem;
   background: var(--panel-strong);
   backdrop-filter: blur(var(--blur));
@@ -104,20 +121,58 @@ nav {
   position: sticky;
   top: 1rem;
   z-index: 10;
+  flex-wrap: wrap;
 }
+
+.brand { display: flex; align-items: center; gap: 0.55rem; margin-right: 0.3rem; }
+.brand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--series-1), var(--series-6));
+  color: #06131a;
+  flex: none;
+}
+.brand-icon svg { width: 17px; height: 17px; }
+.brand-name { font-weight: 700; font-size: 0.98rem; letter-spacing: -0.01em; white-space: nowrap; }
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-right: 0.3rem;
+}
+.status-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.status-badge.good { background: color-mix(in srgb, var(--status-good) 16%, var(--panel-strong)); color: var(--status-good); }
+.status-badge.warning { background: color-mix(in srgb, var(--status-warning) 16%, var(--panel-strong)); color: var(--status-warning); }
+.status-badge.critical { background: color-mix(in srgb, var(--status-critical) 16%, var(--panel-strong)); color: var(--status-critical); }
+.status-badge.unknown { background: color-mix(in srgb, var(--muted) 16%, var(--panel-strong)); color: var(--muted); }
+
+.nav-links { display: flex; align-items: center; gap: 0.15rem; flex-wrap: wrap; }
 
 nav a {
   color: var(--muted);
   text-decoration: none;
   font-weight: 600;
-  font-size: 0.92rem;
-  transition: color 0.15s ease;
+  font-size: 0.87rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
-nav a:hover, nav a.active { color: var(--text); }
+nav a:hover { color: var(--text); }
+nav a.active { color: var(--text); background: var(--panel-solid); }
 
 main {
-  max-width: 1080px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 0 1.5rem 3rem;
 }
@@ -226,16 +281,45 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
   margin-bottom: 1.25rem;
 }
 
-.stat-tile { padding: 1.1rem 1.25rem; }
-.stat-label { font-size: 0.8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-.stat-value { font-size: 1.7rem; font-weight: 650; margin: 0.25rem 0 0.35rem; letter-spacing: -0.01em; }
+.stat-tile { padding: 1.1rem 1.25rem; position: relative; }
+.stat-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  max-width: calc(100% - 40px);
+}
+.stat-value { font-size: 1.7rem; font-weight: 650; margin: 0.3rem 0 0.35rem; letter-spacing: -0.01em; }
 .stat-delta { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 0.3rem; }
 .stat-delta.good { color: var(--status-good); }
 .stat-delta.bad { color: var(--status-critical); }
 .stat-delta.neutral { color: var(--muted); }
+.stat-delta::before { font-size: 0.75rem; }
+.stat-delta.good::before { content: "↗"; }
+.stat-delta.bad::before { content: "↘"; }
 .stat-value.good { color: var(--status-good); }
 .stat-value.bad { color: var(--status-critical); }
 .stat-value.warning { color: var(--status-warning); }
+
+.stat-icon {
+  position: absolute;
+  top: 1.1rem;
+  right: 1.1rem;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.stat-icon svg { width: 15px; height: 15px; }
+.stat-icon.good { color: var(--status-good); }
+.stat-icon.bad { color: var(--status-critical); }
+.stat-icon.accent { color: var(--accent); }
 
 .sparkline { display: flex; align-items: flex-end; gap: 3px; height: 28px; margin-top: 0.6rem; }
 .sparkline .bar { flex: 1; background: var(--muted); opacity: 0.45; border-radius: 2px 2px 0 0; min-height: 3px; }
@@ -268,6 +352,8 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 }
 .bar-fill.series-1 { background: var(--series-1); }
 .bar-fill.series-2 { background: var(--series-2); }
+.bar-fill.good { background: var(--status-good); }
+.bar-fill.critical { background: var(--status-critical); }
 
 /* part-to-whole stacked bar */
 .stack-bar { display: flex; height: 28px; border-radius: 8px; overflow: hidden; background: color-mix(in srgb, var(--text) 6%, transparent); }
@@ -285,6 +371,94 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 .slot-other { background: var(--series-other); }
 
 .empty-state { color: var(--muted); font-size: 0.9rem; padding: 0.5rem 0; }
+
+/* ---- Dashboard two-column layout ------------------------------------------- */
+.dash-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 1.25rem; align-items: start; }
+.dash-main, .dash-side { min-width: 0; }
+@media (max-width: 900px) {
+  .dash-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- Budget limits list ------------------------------------------------------ */
+.limit-row { padding: 0.85rem 0; border-bottom: 1px solid var(--border); }
+.limit-row:last-child { border-bottom: none; padding-bottom: 0; }
+.limit-row:first-child { padding-top: 0; }
+.limit-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.25rem; }
+.limit-name { font-weight: 600; font-size: 0.92rem; }
+.limit-amount { font-weight: 650; }
+.limit-sub { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.45rem; }
+.limit-sub .used { font-weight: 600; }
+.limit-sub .used.over { color: var(--status-critical); }
+.limit-sub .used.under { color: var(--status-good); }
+.limit-track { height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--text) 6%, transparent); overflow: hidden; }
+.limit-fill { height: 100%; border-radius: 999px; background: var(--status-good); }
+.limit-fill.over { background: var(--status-critical); }
+
+/* ---- Recent activity table -------------------------------------------------- */
+.activity-desc { font-weight: 500; }
+.pill {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  font-size: 0.76rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.source-tag { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.amount.good { color: var(--status-good); font-weight: 650; }
+.amount.bad { color: var(--status-critical); font-weight: 650; }
+
+/* ---- Donut chart (category breakdown) ---------------------------------------- */
+.donut-wrap { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+.donut {
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.donut-hole {
+  position: absolute;
+  inset: 20px;
+  border-radius: 50%;
+  background: var(--panel-solid);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.donut-hole-label { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+.donut-hole-value { font-size: 1rem; font-weight: 650; margin-top: 0.15rem; }
+.donut-legend { display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem; flex: 1; min-width: 140px; }
+.donut-legend-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.donut-legend-row .label { display: flex; align-items: center; gap: 0.5rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donut-legend-row .pct { color: var(--muted); font-weight: 600; flex: none; }
+
+/* ---- AI report card ----------------------------------------------------------- */
+.ai-card-head { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.9rem; }
+.ai-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--accent-purple) 22%, var(--panel-strong));
+  color: var(--accent-purple);
+}
+.ai-icon svg { width: 17px; height: 17px; }
+.ai-card-title { font-weight: 650; font-size: 0.95rem; }
+.ai-card-subtitle { font-size: 0.76rem; color: var(--muted); }
+.insights-list { margin: 0; padding-left: 1.1rem; font-size: 0.88rem; line-height: 1.6; }
+.insights-list li { margin-bottom: 0.55rem; }
+.insights-list li:last-child { margin-bottom: 0; }
 
 
 /* Inline calculator, used on the budgets page */

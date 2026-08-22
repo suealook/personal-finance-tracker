@@ -168,6 +168,21 @@ def _build_group_segments(group_totals: dict[str, dict[str, float]]) -> list[dic
     return segments
 
 
+def _build_donut_segments(group_segments: list[dict]) -> list[dict]:
+    """Adds cumulative start/end percentages (for a CSS conic-gradient) and
+    the matching --series-N custom property name to each segment, so the
+    template builds one donut chart without doing running-total math or
+    slot-to-color lookups in Jinja."""
+    segments = []
+    cursor = 0.0
+    for seg in group_segments:
+        start = cursor
+        cursor += seg["pct"]
+        color_var = seg["slot"].replace("slot-", "--series-")
+        segments.append({**seg, "start_pct": round(start, 3), "end_pct": round(cursor, 3), "color_var": color_var})
+    return segments
+
+
 def create_app() -> Flask:
     if settings.RUNNING_UNDER_HOME_ASSISTANT and not settings.DASHBOARD_PASSWORD:
         raise RuntimeError(
@@ -194,6 +209,12 @@ def create_app() -> Flask:
     # base.html show/hide the Log out button without templates touching
     # settings directly.
     app.jinja_env.globals["dashboard_password_set"] = bool(settings.DASHBOARD_PASSWORD)
+
+    @app.context_processor
+    def _inject_bot_status():
+        # Powers the nav bar's live status badge on every page — reuses the
+        # same heartbeat-age logic the /update page already shows in detail.
+        return {"nav_bot_status": _bot_status()}
 
     @app.before_request
     def _security_gate():
@@ -328,6 +349,23 @@ def create_app() -> Flask:
             for g, v in sorted(group_totals.items())
         ]
         group_segments = _build_group_segments(group_totals)
+        donut_segments = _build_donut_segments(group_segments)
+
+        recent_txns = sorted(
+            txns_by_month.get(month, []),
+            key=lambda t: (t.get("Date") or "", t.get("LoggedAt") or ""),
+            reverse=True,
+        )[:8]
+        for t in recent_txns:
+            t["is_income"] = cat_types.get(t.get("Category", "")) == "Income"
+
+        budget_limits = sorted(
+            (r for r in rows if r["planned"] > 0),
+            key=lambda r: (r["actual"] / r["planned"]),
+            reverse=True,
+        )
+        for r in budget_limits:
+            r["used_pct"] = round((r["actual"] / r["planned"]) * 100, 1)
 
         return render_template(
             "dashboard.html",
@@ -338,6 +376,7 @@ def create_app() -> Flask:
             total_actual=total_actual,
             group_summary=group_summary,
             group_segments=group_segments,
+            donut_segments=donut_segments,
             income_total=income_total,
             spend_total=spend_total,
             net=net,
@@ -347,6 +386,9 @@ def create_app() -> Flask:
             spend_delta_class=_delta_class(spend_total - spend_prev, up_is_good=False),
             budget_used_pct=budget_used_pct,
             sparkline=sparkline,
+            recent_txns=recent_txns,
+            budget_limits=budget_limits,
+            claude_model=settings.CLAUDE_MODEL,
         )
 
     @app.route("/api/insights")

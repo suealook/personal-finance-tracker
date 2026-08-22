@@ -1,5 +1,5 @@
 name: "Personal Finance Tracker"
-version: "0.4.7"
+version: "0.5.0"
 slug: "personal_finance"
 description: "Telegram-logged budget tracker with a local dashboard and Claude-powered insights"
 url: "https://github.com/suealook/personal-finance-tracker"

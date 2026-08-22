@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.5.0 — full visual redesign
+
+User-requested redesign matching a reference dashboard mockup — new color
+palette, typography, and layout across every page, not just the dashboard.
+
+- **New cool-navy palette** (was a warmer neutral dark) with matching green/
+  red/blue/purple accents, defined the same way as before — CSS custom
+  properties with a light-mode override — so dark/light and the whole
+  design-token system keep working unchanged everywhere else in the app.
+- **Tabular monospace numbers**: every dollar figure (stat cards, table
+  cells) now uses a monospace font with `font-variant-numeric: tabular-nums`
+  so columns of numbers actually line up on their digits, matching
+  standard fintech-dashboard convention. System font stacks throughout —
+  no external font loading, so the dashboard keeps working even if the
+  Pi's internet is flaky (this app is meant to stay usable over the LAN
+  regardless).
+- **Nav bar**: brand mark, and a live "Bot Connected / Stale / Down" status
+  badge — reusing the exact same heartbeat-age logic the /update page
+  already showed in detail, now visible from every page via a new
+  `context_processor`. Active nav link now gets a filled pill instead of
+  just a text-color change.
+- **Dashboard rebuilt around a two-column layout**: stat cards gained icon
+  badges; the planned-vs-actual chart now shows a distinct "Overdraft"
+  red state when actual spending exceeds planned for a category (previously
+  just green regardless of over/under); new "Active Budget Limits" list
+  with per-category progress bars; new "Recent Financial Activity" table
+  (an addition — the dashboard previously only showed aggregated
+  category totals, not individual transactions); new "Category Breakdown"
+  donut chart (pure CSS `conic-gradient`, no chart library) built from the
+  same group-totals data the existing stacked bar already used; the AI
+  Insights card restyled as "AI Spending Report" with a model-name
+  subtitle. The existing By-category/By-group detail tables stay below,
+  unchanged — useful data the reference mockup didn't have room for isn't
+  getting dropped just to match a screenshot.
+- Budgets, Categories, Reports, Export, Update, and the new login page all
+  inherit the new palette/typography automatically through the same shared
+  `.card`/`.data-table`/`.stat-*` classes already in place — verified each
+  renders cleanly and a full add-category → set-budget → clean-up round
+  trip still works after the visual changes.
+
 ## 0.4.7 — real login page instead of the browser's Basic Auth popup
 
 - **New login page** (`/login`) replaces the raw browser Basic Auth prompt:
