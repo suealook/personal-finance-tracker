@@ -5,7 +5,9 @@ talking to gspread directly, so there is exactly one place that knows the
 sheet's tab/column layout.
 """
 
+import contextlib
 import re
+import sys
 import time
 from typing import Callable, Optional
 
@@ -14,6 +16,36 @@ from google.oauth2.service_account import Credentials
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from config import settings
+
+if sys.platform != "win32":
+    import fcntl
+else:
+    fcntl = None  # Windows local dev only; the deployed target (the add-on container) is always Linux.
+
+
+@contextlib.contextmanager
+def _sheet_write_lock():
+    """Cross-process advisory lock serializing read-then-write sequences
+    against the sheet. The bot and web dashboard run as two separate OS
+    processes sharing no memory, so an in-process lock (threading.Lock)
+    wouldn't stop one process's write from landing on row positions the
+    other read before either wrote — e.g. the bot adding a category via
+    Telegram while the web dashboard batch-writes Group changes, where the
+    web process's cached row numbers go stale mid-write and the wrong row
+    gets updated. A file lock (flock) is visible across processes, which an
+    in-memory lock isn't. No-op on Windows, where this is only ever local
+    dev with a single process talking to the sheet."""
+    if fcntl is None:
+        yield
+        return
+    lock_path = settings.HEARTBEAT_DIR / "sheets_write.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -171,6 +203,29 @@ class SheetTab:
         self.ws.delete_rows(row_index)
 
     @_retryable
+    def delete_rows_batch(self, row_indices: list[int]):
+        """Deletes multiple rows in one Sheets API call via a single
+        batchUpdate with one deleteDimension request per row. Callers must
+        pass row_indices sorted descending — Sheets applies the requests in
+        the given order within the batch, and deleting a lower row first
+        would shift the row numbers the later requests in the same call
+        still refer to."""
+        requests = [
+            {
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": self.ws.id,
+                        "dimension": "ROWS",
+                        "startIndex": row_index - 1,  # deleteDimension ranges are 0-indexed
+                        "endIndex": row_index,
+                    }
+                }
+            }
+            for row_index in row_indices
+        ]
+        self.ws.spreadsheet.batch_update({"requests": requests})
+
+    @_retryable
     def batch_update_cells(self, cells: list["gspread.Cell"]):
         self.ws.update_cells(cells, value_input_option="USER_ENTERED")
 
@@ -322,32 +377,33 @@ def upsert_planned_batch(month: str, amounts: dict, notes: Optional[dict] = None
     if not amounts:
         return
     notes = notes or {}
-    tab = SheetTab(TAB_PLANNED)
-    existing = tab.all_records()
-    row_by_category = {
-        r["Category"]: i + 2
-        for i, r in enumerate(existing)
-        if r.get("Month") == month
-    }
-    amount_col = tab._header.index("PlannedAmount") + 1
-    notes_col = tab._header.index("Notes") + 1
+    with _sheet_write_lock():
+        tab = SheetTab(TAB_PLANNED)
+        existing = tab.all_records()
+        row_by_category = {
+            r["Category"]: i + 2
+            for i, r in enumerate(existing)
+            if r.get("Month") == month
+        }
+        amount_col = tab._header.index("PlannedAmount") + 1
+        notes_col = tab._header.index("Notes") + 1
 
-    cells = []
-    new_rows = []
-    for category, amount in amounts.items():
-        row_index = row_by_category.get(category)
-        note = notes.get(category, "")
-        if row_index is not None:
-            cells.append(gspread.Cell(row_index, amount_col, amount))
-            if note:
-                cells.append(gspread.Cell(row_index, notes_col, _sanitize_cell(note)))
-        else:
-            new_rows.append({"Month": month, "Category": category, "PlannedAmount": amount, "Notes": note})
+        cells = []
+        new_rows = []
+        for category, amount in amounts.items():
+            row_index = row_by_category.get(category)
+            note = notes.get(category, "")
+            if row_index is not None:
+                cells.append(gspread.Cell(row_index, amount_col, amount))
+                if note:
+                    cells.append(gspread.Cell(row_index, notes_col, _sanitize_cell(note)))
+            else:
+                new_rows.append({"Month": month, "Category": category, "PlannedAmount": amount, "Notes": note})
 
-    if cells:
-        tab.batch_update_cells(cells)
-    if new_rows:
-        tab.append_rows(new_rows)
+        if cells:
+            tab.batch_update_cells(cells)
+        if new_rows:
+            tab.append_rows(new_rows)
 
 
 def update_categories_batch(group_changes: dict):
@@ -356,18 +412,59 @@ def update_categories_batch(group_changes: dict):
     read+write round trip per changed category."""
     if not group_changes:
         return
-    tab = SheetTab(TAB_CATEGORIES)
-    existing = tab.all_records()
-    row_by_category = {r["Category"]: i + 2 for i, r in enumerate(existing)}
-    col_index = tab._header.index("Group") + 1
+    with _sheet_write_lock():
+        tab = SheetTab(TAB_CATEGORIES)
+        existing = tab.all_records()
+        row_by_category = {r["Category"]: i + 2 for i, r in enumerate(existing)}
+        col_index = tab._header.index("Group") + 1
 
-    cells = [
-        gspread.Cell(row_by_category[category], col_index, _sanitize_cell(new_group))
-        for category, new_group in group_changes.items()
-        if category in row_by_category
-    ]
-    if cells:
-        tab.batch_update_cells(cells)
+        cells = [
+            gspread.Cell(row_by_category[category], col_index, _sanitize_cell(new_group))
+            for category, new_group in group_changes.items()
+            if category in row_by_category
+        ]
+        if cells:
+            tab.batch_update_cells(cells)
+    invalidate_category_cache()
+
+
+def deactivate_categories_batch(names: list[str]):
+    """Batched version of set_category_active(active=False) for many
+    categories at once — one read plus one batched cell-update call,
+    instead of a read+write round trip per category."""
+    if not names:
+        return
+    with _sheet_write_lock():
+        tab = SheetTab(TAB_CATEGORIES)
+        existing = tab.all_records()
+        row_by_category = {r["Category"]: i + 2 for i, r in enumerate(existing)}
+        col_index = tab._header.index("Active") + 1
+
+        cells = [
+            gspread.Cell(row_by_category[name], col_index, "FALSE")
+            for name in names
+            if name in row_by_category
+        ]
+        if cells:
+            tab.batch_update_cells(cells)
+    invalidate_category_cache()
+
+
+def remove_categories_batch(names: list[str]):
+    """Batched permanent delete for many categories at once — a single
+    batchUpdate call instead of one delete_rows API call per category."""
+    if not names:
+        return
+    with _sheet_write_lock():
+        tab = SheetTab(TAB_CATEGORIES)
+        existing = tab.all_records()
+        row_by_category = {r["Category"]: i + 2 for i, r in enumerate(existing)}
+        row_indices = sorted(
+            (row_by_category[name] for name in names if name in row_by_category),
+            reverse=True,
+        )
+        if row_indices:
+            tab.delete_rows_batch(row_indices)
     invalidate_category_cache()
 
 

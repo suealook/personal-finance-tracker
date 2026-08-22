@@ -172,15 +172,23 @@ def create_app() -> Flask:
 
     @app.before_request
     def _security_gate():
-        # CSRF: reject cross-origin state-changing requests. Checked before auth,
-        # and regardless of whether a password is configured, since a forged POST
-        # from another site is a risk independent of authentication.
-        if request.method == "POST":
-            origin = request.headers.get("Origin") or request.headers.get("Referer")
-            if origin:
-                origin_host = urlparse(origin).netloc
-                if origin_host and origin_host != request.host:
-                    return Response("Cross-origin request rejected.", status=403)
+        # CSRF: reject cross-origin requests on every method, not just POST —
+        # GET routes can have side effects too (e.g. /api/insights triggers a
+        # real, billed Claude API call). Checked before auth, and regardless of
+        # whether a password is configured, since a forged request from
+        # another site is a risk independent of authentication. Comparing
+        # origin_host != request.host directly (not "if origin_host and...")
+        # means a present-but-unparseable Origin — notably the literal string
+        # "null" sent by sandboxed iframes and other opaque-origin requests,
+        # which urlparse turns into an empty netloc — is rejected as a
+        # mismatch instead of silently passing through. A request with
+        # neither header at all (plain navigation, most non-browser clients)
+        # is still let through unchecked, same as before.
+        origin = request.headers.get("Origin") or request.headers.get("Referer")
+        if origin:
+            origin_host = urlparse(origin).netloc
+            if origin_host != request.host:
+                return Response("Cross-origin request rejected.", status=403)
 
         # Auth: required whenever a password is configured (always true under
         # Home Assistant, per the fail-closed check above; optional for local
@@ -285,23 +293,40 @@ def create_app() -> Flask:
     def budgets():
         month = request.args.get("month") or request.form.get("month") or current_month()
         if request.method == "POST":
-            active_records = categories_module.get_active_category_records()
+            # Iterate the SUBMITTED fields, not a freshly-fetched category
+            # list — the rendered form's field names (amount_<name>,
+            # group_<name>) are keyed by whatever names were current when
+            # the page loaded. If a category gets renamed elsewhere between
+            # load and submit, fetching active_records fresh here would look
+            # for amount_<newname> in a form that only has amount_<oldname>,
+            # silently dropping that edit while still reporting success.
+            # Reading the form directly and cross-checking against the
+            # CURRENT active list catches exactly that mismatch instead.
+            active_by_name = {c["Category"]: c for c in categories_module.get_active_category_records()}
+
             amounts = {}
             group_changes = {}
-            for c in active_records:
-                category = c["Category"]
-
-                amount_field = f"amount_{category}"
-                if amount_field in request.form and request.form[amount_field].strip() != "":
+            skipped = set()
+            for key, value in request.form.items():
+                if key.startswith("amount_"):
+                    category = key[len("amount_"):]
+                    if value.strip() == "":
+                        continue
+                    if category not in active_by_name:
+                        skipped.add(category)
+                        continue
                     try:
-                        amounts[category] = float(request.form[amount_field])
+                        amounts[category] = float(value)
                     except ValueError:
-                        pass
-
-                group_field = f"group_{category}"
-                if group_field in request.form:
-                    new_group = request.form[group_field].strip()
-                    if new_group != (c.get("Group") or ""):
+                        skipped.add(category)
+                elif key.startswith("group_"):
+                    category = key[len("group_"):]
+                    cat = active_by_name.get(category)
+                    if cat is None:
+                        skipped.add(category)
+                        continue
+                    new_group = value.strip()
+                    if new_group != (cat.get("Group") or ""):
                         group_changes[category] = new_group
 
             try:
@@ -311,6 +336,16 @@ def create_app() -> Flask:
                 app.logger.exception("budgets save failed for month=%s", month)
                 return _status_redirect(
                     "budgets", "Could not save budgets — please try again.", status="error", month=month
+                )
+
+            if skipped:
+                shown = ", ".join(sorted(skipped)[:3])
+                more = "" if len(skipped) <= 3 else f" and {len(skipped) - 3} more"
+                return _status_redirect(
+                    "budgets",
+                    f"Saved, but skipped {shown}{more} — reload the page and try again for those.",
+                    status="error",
+                    month=month,
                 )
 
             return _status_redirect("budgets", f"Budgets saved for {month}.", month=month)
@@ -459,24 +494,20 @@ def create_app() -> Flask:
     def categories_bulk_delete():
         names = request.form.getlist("category_names")
         by_name = {c["Category"]: c for c in categories_module.get_all_categories()}
-        count = 0
+        # Same rule as the single-row buttons: active -> deactivate (soft,
+        # reversible), already-inactive -> permanently remove. Split into two
+        # batches instead of one Sheets round trip per category — the same
+        # per-row API-call pattern that was fixed for the Budgets Save
+        # button, still present here until now.
+        to_deactivate = [n for n in names if by_name.get(n) and str(by_name[n].get("Active", "")).strip().upper() == "TRUE"]
+        to_remove = [n for n in names if by_name.get(n) and str(by_name[n].get("Active", "")).strip().upper() != "TRUE"]
         try:
-            for name in names:
-                cat = by_name.get(name)
-                if not cat:
-                    continue
-                # Same rule as the single-row buttons: active -> deactivate (soft,
-                # reversible), already-inactive -> permanently remove.
-                if str(cat.get("Active", "")).strip().upper() == "TRUE":
-                    categories_module.deactivate_category(name)
-                else:
-                    categories_module.remove_category(name)
-                count += 1
+            categories_module.deactivate_categories_batch(to_deactivate)
+            categories_module.remove_categories_batch(to_remove)
         except Exception:
             app.logger.exception("categories_bulk_delete failed")
-            return _status_redirect(
-                "categories_page", f"Deleted {count} of {len(names)} before an error occurred.", status="error"
-            )
+            return _status_redirect("categories_page", "Could not delete the selected categories — please try again.", status="error")
+        count = len(to_deactivate) + len(to_remove)
         if count == 0:
             return _status_redirect("categories_page", "No categories selected.", status="error")
         return _status_redirect("categories_page", f"Deleted {count} categor{'y' if count == 1 else 'ies'}.")
@@ -489,7 +520,11 @@ def create_app() -> Flask:
     @app.route("/reports/generate", methods=["POST"])
     def reports_generate():
         month = request.form.get("month", current_month())
-        if _llm_rate_limited(f"report:{month}"):
+        # Keyed globally, not per-month — a per-month key lets the cooldown be
+        # bypassed entirely by requesting a different month each time, since
+        # month is attacker-suppliable form input. Matches how /api/insights
+        # already rate-limits itself with a single fixed key.
+        if _llm_rate_limited("report"):
             return _status_redirect(
                 "report_detail",
                 "Please wait a few seconds before generating another report.",

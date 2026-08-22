@@ -74,6 +74,18 @@ def deactivate_category(name: str):
     sheets_client.set_category_active(name, active=False)
 
 
+def deactivate_categories_batch(names: list[str]):
+    """Batched deactivate for multiple categories at once (e.g. bulk-delete
+    on the Categories page), instead of one round trip per category."""
+    sheets_client.deactivate_categories_batch(names)
+
+
+def remove_categories_batch(names: list[str]):
+    """Batched permanent delete for multiple already-inactive categories at
+    once, instead of one round trip per category."""
+    sheets_client.remove_categories_batch(names)
+
+
 def activate_category(name: str):
     sheets_client.set_category_active(name, active=True)
 

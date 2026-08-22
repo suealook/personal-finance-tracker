@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.4.6 — full infrastructure review: 10 fixes (security, races, reliability)
+
+A user-requested full review across security, every file, and architecture
+(5 parallel agents + manual verification of every finding before fixing).
+All 10 confirmed findings fixed:
+
+- **CSRF bypass via `Origin: null`**: the cross-origin check only rejected
+  requests when the parsed origin host was truthy, so a sandboxed-iframe
+  auto-submit (which sends the literal `Origin: null`) parsed to an empty
+  string and slipped through unchecked. Now a present-but-mismatched
+  (including empty/unparseable) origin is always rejected.
+- **CSRF check was POST-only**: GET routes, including `/api/insights` (a
+  real, billed Claude API call), had zero cross-site protection. Now
+  checked on every method.
+- **Debug-mode exposure**: Werkzeug's debugger (arbitrary code execution)
+  was gated only on `RUNNING_UNDER_HOME_ASSISTANT`, not on whether the app
+  was actually bound to loopback — setting `WEB_BIND_HOST=0.0.0.0` for
+  local LAN testing without going through HA would have silently exposed
+  it. Now also checks the bind host.
+- **Report-generation rate limit was bypassable**: keyed per-month, so
+  requesting a different month each time skipped the cost-abuse cooldown
+  entirely. Now a single global key, matching how `/api/insights` already
+  worked.
+- **Bulk-delete on Categories still did one Sheets round trip per
+  category** — the exact slowness pattern just fixed for Budgets Save,
+  missed on its sibling page. New `deactivate_categories_batch` /
+  `remove_categories_batch` (the latter via a real Sheets `batchUpdate`
+  with multiple `deleteDimension` requests in one call) fix it the same
+  way.
+- **Race conditions in this session's own new batched writes**:
+  `update_categories_batch` and `upsert_planned_batch` each read row
+  positions once and wrote to them later with no lock — a concurrent
+  write from the bot process (which shares nothing in memory with the web
+  process) could land on a since-shifted row, or two overlapping saves
+  could both decide a category was "new" and both append a duplicate row.
+  Fixed with a cross-process file lock (`fcntl.flock`, no-op on Windows
+  local dev) serializing every Categories/Planned batch write.
+- **Budgets form silently dropped edits after a category rename**: the
+  POST handler re-fetched current category names and looked for form
+  fields keyed by them, but the submitted form was rendered under
+  whatever names were current at page-load time — a rename in another
+  tab meant that category's edit vanished with no error, and the page
+  still reported "Budgets saved." Now reads the submitted fields directly
+  and reports exactly which ones were skipped instead of claiming
+  false success.
+- **`/correct category <value>` wrote an unvalidated category name** —
+  the same bug class as the income-miscategorization fix in 0.4.5, just
+  through a second, unpatched entry point (the manual correction command
+  instead of the automatic Claude-parsed path). Now validated the same
+  way, with casing normalized on a match.
+- **Any single process crash killed the whole add-on container**:
+  `run_supervisor.py` used to call `shutdown(1)` — killing both bot and
+  web — the instant either one exited for any reason, including a
+  transient network blip. Now restarts just the failed process in place,
+  only giving up (and letting Docker/Supervisor restart the container)
+  after 5 restarts within 60 seconds of the same process.
+
 ## 0.4.5 — fixed a real income-miscategorization bug
 
 - **Root-caused "income doesn't show on the dashboard"**: a logged income

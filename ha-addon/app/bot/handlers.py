@@ -277,6 +277,20 @@ async def cmd_correct(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             await update.message.reply_text("Amount must be a number.")
             return
+    if field == "category":
+        # Same validation _resolve_category applies to the auto-parsed path —
+        # writing an unrecognized category string here would silently orphan
+        # the transaction from every Type-based rollup (dashboard income/
+        # spend split, budgets, variance) exactly like the bug that path was
+        # just fixed for, just through this manual entry point instead.
+        active = categories_module.get_active_categories()
+        match = next((c for c in active if c.lower() == value.lower()), None)
+        if match is None:
+            await update.message.reply_text(
+                f"'{value}' isn't an existing category. Use /addcategory {value} <type> first, or check the spelling."
+            )
+            return
+        value = match  # normalize to the category's real casing
     sheets_client.update_transaction_field(last["_row"], column, value)
     await update.message.reply_text(f"Updated {field} to: {value}")
 
