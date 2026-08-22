@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.5 — fixed a real income-miscategorization bug
+
+- **Root-caused "income doesn't show on the dashboard"**: a logged income
+  transaction ("Earn 78,000 in Salary...") got written under Category =
+  "Salary", which isn't an actual category — the two real Income categories
+  are "Fixed Income" and "Additional Income". Because the dashboard (and
+  budgets, and variance reports) only count a transaction as income when its
+  Category's Type is exactly "Income", an unrecognized category name falls
+  through and gets silently counted as an ordinary **expense** instead.
+  Corrected the one existing transaction to "Fixed Income".
+- **Fixed why this could happen at all**: the bot trusted Claude's own
+  `category_is_new` flag at face value. Claude can judge a category "close
+  enough" to an existing one and report `category_is_new: false` while
+  still returning a category string that doesn't literally match anything
+  (here, "Salary" instead of "Fixed Income") — silently orphaning the
+  transaction from every Type-based rollup with no confirmation prompt and
+  no error. `bot/handlers.py::_resolve_category` is now the actual
+  authority: it checks the model's category string against the real active
+  category list itself (case-insensitively, normalizing casing on a match)
+  instead of trusting the model's self-report. A category that doesn't
+  really exist now always triggers the existing "isn't an existing
+  category — create it?" confirmation, regardless of what Claude claimed.
+
 ## 0.4.4 — fixed slow Save, site-wide toasts, budget sections, two data bugs
 
 - **Fixed the slow `/budgets` Save**: it was doing a read-then-write Google
