@@ -1,4 +1,3 @@
-import json
 import os
 import secrets
 from pathlib import Path
@@ -8,25 +7,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-# Under Home Assistant, user-entered add-on config arrives as JSON here (populated
-# by Supervisor from the add-on's Configuration tab) instead of as env vars/.env.
-HA_OPTIONS_FILE = Path("/data/options.json")
-HA_DATA_DIR = Path("/data")
-
-RUNNING_UNDER_HOME_ASSISTANT = HA_OPTIONS_FILE.exists()
-
-_ha_options: dict = {}
-if RUNNING_UNDER_HOME_ASSISTANT:
-    try:
-        _ha_options = json.loads(HA_OPTIONS_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        _ha_options = {}
-
-
-def _get(ha_key: str, env_key: str, default: str = "") -> str:
-    if RUNNING_UNDER_HOME_ASSISTANT and _ha_options.get(ha_key):
-        return str(_ha_options[ha_key])
-    return os.environ.get(env_key, default)
+DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR / "data"))
 
 
 def _required(name: str) -> str:
@@ -39,48 +20,36 @@ def _required(name: str) -> str:
     return value
 
 
-TELEGRAM_BOT_TOKEN = _get("telegram_bot_token", "TELEGRAM_BOT_TOKEN")
-TELEGRAM_ALLOWED_USER_ID = _get("telegram_allowed_user_id", "TELEGRAM_ALLOWED_USER_ID")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_ALLOWED_USER_ID = os.environ.get("TELEGRAM_ALLOWED_USER_ID", "")
 
-GOOGLE_SHEET_ID = _get("google_sheet_id", "GOOGLE_SHEET_ID")
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
+GOOGLE_SERVICE_ACCOUNT_FILE = str(
+    BASE_DIR / os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "data/credentials/service_account.json")
+)
 
-if RUNNING_UNDER_HOME_ASSISTANT and _ha_options.get("google_service_account_json"):
-    # HA's config form can't upload files, so the service-account JSON is pasted as
-    # text; write it out once so the rest of the app can treat it as a normal file.
-    _service_account_path = HA_DATA_DIR / "service_account.json"
-    try:
-        _service_account_path.write_text(_ha_options["google_service_account_json"], encoding="utf-8")
-    except OSError:
-        pass
-    GOOGLE_SERVICE_ACCOUNT_FILE = str(_service_account_path)
-else:
-    GOOGLE_SERVICE_ACCOUNT_FILE = str(
-        BASE_DIR / os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "data/credentials/service_account.json")
-    )
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
 
-ANTHROPIC_API_KEY = _get("anthropic_api_key", "ANTHROPIC_API_KEY")
-CLAUDE_MODEL = _get("claude_model", "CLAUDE_MODEL", "claude-sonnet-5")
-
-WEB_PORT = int(_get("web_port", "WEB_PORT", "5000"))
+WEB_PORT = int(os.environ.get("WEB_PORT", "5000"))
 WEB_BIND_HOST = os.environ.get("WEB_BIND_HOST", "127.0.0.1")
 
-# The dashboard binds to 0.0.0.0 (LAN-reachable) once deployed under Home
-# Assistant, so it must not be servable without a password there. Local dev
-# (bound to 127.0.0.1 only) keeps this optional for convenience. Enforced
-# (fail-closed) in web/app.py specifically — not here, since this module is
-# also imported by the bot process, which has no need for this password.
-DASHBOARD_PASSWORD = _get("dashboard_password", "DASHBOARD_PASSWORD")
+# Required whenever WEB_BIND_HOST isn't loopback-only (enforced, fail-closed,
+# in web/app.py specifically — not here, since this module is also imported
+# by the bot process, which has no need for this password). Optional for
+# local dev, which stays on 127.0.0.1 by default.
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 # Optional — if blank, the login page accepts any username alongside the
-# correct password (password-only, same as the old Basic Auth behavior).
-DASHBOARD_USERNAME = _get("dashboard_username", "DASHBOARD_USERNAME")
+# correct password (password-only).
+DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "")
 
-REPORTS_CACHE_DIR = (HA_DATA_DIR if RUNNING_UNDER_HOME_ASSISTANT else BASE_DIR / "data") / "reports_cache"
-HEARTBEAT_DIR = HA_DATA_DIR if RUNNING_UNDER_HOME_ASSISTANT else BASE_DIR / "data"
+REPORTS_CACHE_DIR = DATA_DIR / "reports_cache"
+HEARTBEAT_DIR = DATA_DIR
 
 
 def _get_or_create_secret_key() -> str:
     """A random key for signing session cookies, generated once and persisted
-    to disk so sessions survive restarts/updates — never typed by the user,
+    to disk so sessions survive restarts/deploys — never typed by the user,
     never in git, never in chat, unlike DASHBOARD_PASSWORD above."""
     path = HEARTBEAT_DIR / "flask_secret_key"
     try:

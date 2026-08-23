@@ -1,7 +1,7 @@
 """Simple file-based liveness signal so the web process can report the bot
-process's status (and vice versa) without any IPC — both run in the same
-container/filesystem under the Home Assistant add-on, or the same local `data/`
-folder in dev.
+process's status (and vice versa) without any IPC — both run as separate
+processes on the same host/filesystem (systemd services in production, the
+same local `data/` folder in dev), sharing HEARTBEAT_DIR.
 """
 
 from datetime import datetime, timezone

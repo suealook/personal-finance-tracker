@@ -14,7 +14,6 @@ from flask import Flask, Response, jsonify, redirect, render_template, request, 
 
 from common import categories as categories_module
 from common import sheets_client
-from common import supervisor_client
 from common import usage_tracker
 from common.dateutil_helpers import current_month, last_n_months, month_bounds, previous_month, year_bounds
 from common.heartbeat import heartbeat_age_seconds
@@ -184,11 +183,15 @@ def _build_donut_segments(group_segments: list[dict]) -> list[dict]:
 
 
 def create_app() -> Flask:
-    if settings.RUNNING_UNDER_HOME_ASSISTANT and not settings.DASHBOARD_PASSWORD:
+    # Fail-closed tied to actual network exposure, not an environment guess:
+    # anything other than loopback-only means the dashboard is reachable by
+    # someone other than this machine (LAN or public internet), so it must
+    # not run without a password.
+    if settings.WEB_BIND_HOST not in ("127.0.0.1", "localhost") and not settings.DASHBOARD_PASSWORD:
         raise RuntimeError(
-            "dashboard_password is not set. Set it in the add-on's Configuration "
-            "tab before starting — the dashboard binds to 0.0.0.0 (LAN-reachable) "
-            "under Home Assistant and must not be served without a password."
+            "DASHBOARD_PASSWORD is not set. The dashboard is bound to "
+            f"{settings.WEB_BIND_HOST!r} (not loopback-only), so it must not run "
+            "without a password. Set DASHBOARD_PASSWORD in your .env file."
         )
 
     app = Flask(__name__)
@@ -237,15 +240,15 @@ def create_app() -> Flask:
                 return Response("Cross-origin request rejected.", status=403)
 
         # Auth: a real login page + signed session cookie, required whenever a
-        # password is configured (always true under Home Assistant, per the
-        # fail-closed check above; optional for local dev, which is bound to
-        # 127.0.0.1 only). /login and static assets stay reachable without a
-        # session so the login page itself — and its CSS — can load at all.
+        # password is configured (always true once bound beyond loopback, per
+        # the fail-closed check above; optional for local dev, which is bound
+        # to 127.0.0.1 only). /login and static assets stay reachable without
+        # a session so the login page itself — and its CSS — can load at all.
         if settings.DASHBOARD_PASSWORD and request.endpoint not in ("login", "static") and not session.get("authenticated"):
             # JS-driven endpoints get a JSON 401 instead of a redirect, so a
             # session expiring mid-page-load fails cleanly in fetch() instead
             # of silently handing the caller the login page's HTML.
-            if request.path.startswith("/api/") or request.endpoint in ("update_run", "update_status"):
+            if request.path.startswith("/api/"):
                 return jsonify({"error": "Authentication required"}), 401
             next_path = request.full_path if request.query_string else request.path
             return redirect(url_for("login", next=next_path))
@@ -709,15 +712,10 @@ def create_app() -> Flask:
 
     @app.route("/update")
     def update_page():
-        supervisor_available = supervisor_client.is_available()
-        addon_info = None
-        supervisor_error = None
-        if supervisor_available:
-            try:
-                addon_info = supervisor_client.get_self_info()
-            except Exception as e:
-                supervisor_error = str(e)
-
+        # Status only -- no remote-update trigger. A web app that can pull
+        # git changes and restart its own services is a privilege-escalation
+        # smell on a public VM; updating here is a manual `git pull` +
+        # `systemctl restart` over SSH, same as any other self-managed host.
         return render_template(
             "update.html",
             web_status={
@@ -727,30 +725,9 @@ def create_app() -> Flask:
             },
             bot_status=_bot_status(),
             sheets_status=_sheets_status(),
-            supervisor_available=supervisor_available,
-            addon_info=addon_info,
-            supervisor_error=supervisor_error,
             claude_usage=usage_tracker.get_claude_usage_summary(),
             sheets_call_count=sheets_client.get_sheets_call_count(),
             claude_model=settings.CLAUDE_MODEL,
         )
-
-    @app.route("/update/run", methods=["POST"])
-    def update_run():
-        if not supervisor_client.is_available():
-            return jsonify({"ok": False, "error": "Not running under Home Assistant."}), 400
-
-        def _do_update():
-            try:
-                supervisor_client.trigger_update()
-            except Exception:
-                app.logger.exception("Supervisor update call failed")
-
-        threading.Thread(target=_do_update, daemon=True).start()
-        return jsonify({"ok": True, "message": "Update triggered — the app will restart shortly."})
-
-    @app.route("/update/status")
-    def update_status():
-        return jsonify({"ok": True, "web_started_at": WEB_STARTED_AT.isoformat()})
 
     return app

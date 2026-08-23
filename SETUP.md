@@ -56,43 +56,7 @@ python scripts/run_web.py
 
 Then open http://127.0.0.1:5000 and message your bot on Telegram.
 
-## 7. Deploying to Home Assistant OS (Raspberry Pi)
+## 7. Deploying to a server
 
-This runs as a real Home Assistant local Add-on rather than a bare Docker container,
-since HAOS has no general systemd environment — Supervisor manages everything as
-containers.
-
-1. **Push this repo to GitHub.** Create a private repo on github.com, then from
-   this project:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git remote add origin https://github.com/<you>/<your-repo>.git
-   git branch -M main
-   git push -u origin main
-   ```
-2. Edit `repository.yaml` and `ha-addon/config.yaml`'s `url:` field to point at
-   your actual repo URL, then commit/push again.
-3. In Home Assistant: **Settings → Add-ons → Add-on Store → ⋮ (top right) →
-   Repositories** → paste your GitHub repo URL → Add.
-4. Find "Personal Finance Tracker" in the store and install it.
-5. Open its **Configuration** tab and fill in the same values as `.env` above
-   (paste the *entire* service-account JSON as the `google_service_account_json`
-   field — HA's config form can't upload files), plus a **`dashboard_password`**
-   — required here (unlike local dev): the dashboard binds to your whole LAN
-   under Home Assistant, and the add-on refuses to start without one.
-6. Start the add-on. Check its **Log** tab for both the bot and web processes
-   starting cleanly.
-7. Open `http://<your-ha-ip>:5000` — the dashboard's own **Update** page shows
-   live bot/web/Sheets status from here on, plus a one-click update once you've
-   published a newer version (see below).
-8. **Publishing an update later**: make your code changes, run
-   `python ha-addon/sync_app.py` to refresh the mirrored copy the Docker build
-   uses (see the comment at the top of that file for why this step exists), bump
-   the `version:` in `ha-addon/config.yaml`, commit everything (including the
-   regenerated `ha-addon/app/`), and push. Then either refresh the Add-on Store
-   in HA or click **Update** on the dashboard's `/update` page.
-
-See [ha-addon/DOCS.md](ha-addon/DOCS.md) for the add-on's own reference doc (also
-shown in its Documentation tab once installed).
+See [DEPLOY.md](DEPLOY.md) for running this on a real server (e.g. Oracle Cloud's
+Always Free tier) as two systemd services behind a TLS-terminating reverse proxy.

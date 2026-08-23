@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Update{% endblock %}
+{% block title %}Status{% endblock %}
 {% block content %}
-  <h1>Status &amp; Update</h1>
+  <h1>Status</h1>
 
   <div class="stat-grid">
     <div class="card stat-tile">
@@ -21,23 +21,10 @@
     </div>
   </div>
 
-  <div class="card" id="update-card">
-    <h2>Version</h2>
-    {% if not supervisor_available %}
-    <p class="empty-state">Not running under Home Assistant — the update button only works when this is deployed as the HA add-on. Locally, pull the latest code with git instead.</p>
-    {% elif supervisor_error %}
-    <p class="empty-state">Could not reach Home Assistant Supervisor: {{ supervisor_error }}</p>
-    {% elif addon_info %}
-    <p>Installed version: <strong>{{ addon_info.version }}</strong></p>
-    {% if addon_info.update_available %}
-    <p>Update available: <strong>{{ addon_info.version_latest }}</strong></p>
-    <button type="button" id="update-btn">Update now</button>
-    {% else %}
-    <p class="stat-delta good">Up to date.</p>
-    {% endif %}
-    {% endif %}
-    <p id="update-status" class="insights-status"></p>
-  </div>
+  <p class="muted" style="font-size: 0.85rem;">
+    To update, pull the latest code and restart the services on the server —
+    <code>git pull &amp;&amp; sudo systemctl restart finance-web finance-bot</code>.
+  </p>
 
   <div class="card">
     <h2>Usage &amp; cost estimate</h2>
@@ -62,49 +49,8 @@
     </div>
     <p class="muted" style="margin-top: 0.6rem; font-size: 0.82rem;">
       Claude cost is a rough estimate: standard list pricing for {{ claude_model }} at a fixed
-      ~36 THB/USD, cumulative since this add-on was last (re)installed — not a live exchange
-      rate or an actual bill. Sheets call count resets whenever the web service restarts.
+      ~36 THB/USD, cumulative since the web service was last (re)started — not a live exchange
+      rate or an actual bill. Sheets call count resets the same way.
     </p>
   </div>
-
-  <script>
-  (function () {
-    var btn = document.getElementById('update-btn');
-    if (!btn) return;
-    var statusEl = document.getElementById('update-status');
-
-    function pollUntilBack() {
-      statusEl.textContent = 'Reconnecting…';
-      fetch('/update/status', { cache: 'no-store' })
-        .then(function (res) { if (!res.ok) throw new Error('not ok'); return res.json(); })
-        .then(function () {
-          statusEl.textContent = 'Back online — reloading…';
-          setTimeout(function () { window.location.reload(); }, 1000);
-        })
-        .catch(function () {
-          setTimeout(pollUntilBack, 3000);
-        });
-    }
-
-    btn.addEventListener('click', function () {
-      btn.disabled = true;
-      statusEl.textContent = 'Starting update…';
-      fetch('/update/run', { method: 'POST' })
-        .then(function (res) { return res.json(); })
-        .then(function (data) {
-          if (!data.ok) {
-            statusEl.textContent = data.error || 'Could not start the update.';
-            btn.disabled = false;
-            return;
-          }
-          statusEl.textContent = data.message;
-          setTimeout(pollUntilBack, 5000);
-        })
-        .catch(function () {
-          statusEl.textContent = 'Could not reach the server to start the update.';
-          btn.disabled = false;
-        });
-    });
-  })();
-  </script>
 {% endblock %}
