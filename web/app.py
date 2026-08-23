@@ -293,6 +293,9 @@ def create_app() -> Flask:
     # base.html show/hide the Log out button without templates touching
     # settings directly.
     app.jinja_env.globals["auth_enabled"] = bool(settings.GOOGLE_OAUTH_CLIENT_ID)
+    app.jinja_env.globals["telegram_bot_link"] = (
+        f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}" if settings.TELEGRAM_BOT_USERNAME else None
+    )
 
     @app.context_processor
     def _inject_bot_status():
@@ -391,7 +394,18 @@ def create_app() -> Flask:
         expected_state = session.pop("oauth_state", None)
         code_verifier = session.pop("oauth_code_verifier", None)
         if not expected_state or not code_verifier or request.args.get("state") != expected_state:
-            return Response("Invalid or expired sign-in attempt — please try again.", status=400)
+            # Most common real cause: two overlapping sign-in attempts (a
+            # double-click, or a second tab) -- the later /auth/google/start
+            # call overwrites the session's oauth_state/code_verifier before
+            # the earlier attempt's callback lands, so the earlier one no
+            # longer matches. A dead-end error page just strands the user
+            # mid-login, so render the login page itself with a clear retry
+            # instead of a bare error response.
+            return render_template(
+                "login.html",
+                next="",
+                error="That sign-in attempt expired or was replaced by a newer one — please try again.",
+            )
 
         remember_me = session.pop("oauth_remember_me", False)
         next_url = session.pop("oauth_next", "")
@@ -403,7 +417,7 @@ def create_app() -> Flask:
             claims = google_auth.exchange_code(flow, request.url)
         except Exception:
             app.logger.exception("Google OAuth code exchange failed")
-            return Response("Google sign-in failed — please try again.", status=400)
+            return render_template("login.html", next="", error="Google sign-in failed — please try again.")
 
         email = claims.get("email")
         if not claims.get("email_verified") or not email:
