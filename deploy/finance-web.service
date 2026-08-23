@@ -1,0 +1,14 @@
+[Unit]
+Description=Personal Finance Tracker - Web Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/personal-finance
+ExecStart=/home/ubuntu/personal-finance/venv/bin/python scripts/run_web.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

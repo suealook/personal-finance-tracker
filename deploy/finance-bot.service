@@ -1,0 +1,14 @@
+[Unit]
+Description=Personal Finance Tracker - Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/personal-finance
+ExecStart=/home/ubuntu/personal-finance/venv/bin/python scripts/run_bot.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
