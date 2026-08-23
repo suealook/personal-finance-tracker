@@ -7,6 +7,22 @@
     Edit a field and hit Save (lights up once something's changed) to update it.
   </p>
 
+  <div class="card">
+  <h2>Add category</h2>
+  <form method="post" action="{{ url_for('categories_add') }}">
+    <input type="text" name="name" placeholder="Category name" required>
+    <input type="text" name="group" placeholder="Group (optional, e.g. Cloud Subscription)">
+    <select name="type">
+      <option value="Expense">Expense</option>
+      <option value="Income">Income</option>
+      <option value="Savings">Savings</option>
+      <option value="Debt">Debt</option>
+    </select>
+    <input type="text" name="notes" placeholder="Notes (optional)">
+    <button type="submit">Add</button>
+  </form>
+  </div>
+
   <form id="bulk-form" method="post" action="{{ url_for('categories_bulk_delete') }}"
         onsubmit="return confirmBulkDelete();"></form>
 
@@ -100,22 +116,6 @@
       {% endfor %}
     </tbody>
   </table>
-  </div>
-
-  <div class="card">
-  <h2>Add category</h2>
-  <form method="post" action="{{ url_for('categories_add') }}">
-    <input type="text" name="name" placeholder="Category name" required>
-    <input type="text" name="group" placeholder="Group (optional, e.g. Cloud Subscription)">
-    <select name="type">
-      <option value="Expense">Expense</option>
-      <option value="Income">Income</option>
-      <option value="Savings">Savings</option>
-      <option value="Debt">Debt</option>
-    </select>
-    <input type="text" name="notes" placeholder="Notes (optional)">
-    <button type="submit">Add</button>
-  </form>
   </div>
 
   <script>

@@ -3,19 +3,22 @@
 {% block content %}
   <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem;">
     <h1 style="margin: 0;">Dashboard</h1>
-    <form method="get" class="inline-form">
+    <form method="get" class="inline-form" id="month-picker-form">
       <label>Month: <input type="month" name="month" value="{{ month }}" onchange="this.form.submit()"></label>
     </form>
   </div>
 
   <div class="stat-grid">
     <div class="card stat-tile">
+      <button type="button" id="income-mask-toggle" class="mask-toggle-btn" title="Hide income" aria-label="Hide income" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </button>
       <span class="stat-icon good">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
       </span>
       <div class="stat-label">Total Income</div>
-      <div class="stat-value num">{{ "%.2f"|format(income_total) }}</div>
-      <div class="stat-delta {{ income_delta_class }}">{{ "%.2f"|format(income_delta) }} vs last month</div>
+      <div class="stat-value num maskable-income">{{ "%.2f"|format(income_total) }}</div>
+      <div class="stat-delta {{ income_delta_class }} maskable-income">{{ "%.2f"|format(income_delta) }} vs last month</div>
     </div>
 
     <div class="card stat-tile">
@@ -62,7 +65,7 @@
 
   <div class="dash-grid">
     <div class="dash-main">
-      <div class="card">
+      <div class="card" id="chart-card">
         <h2>Planned vs. Actual Spending</h2>
         {% if chart_rows %}
         <div class="chart-legend">
@@ -90,7 +93,7 @@
         {% endif %}
       </div>
 
-      <div class="card">
+      <div class="card" id="recent-activity-card">
         <h2>Recent Financial Activity</h2>
         {% if recent_txns %}
         <div class="table-scroll">
@@ -103,7 +106,7 @@
               <td class="activity-desc">{{ t.Note or t.Category }}</td>
               <td><span class="pill">{{ t.Category }}</span></td>
               <td><span class="source-tag">{{ t.Source|capitalize }}</span></td>
-              <td class="num amount {{ 'good' if t.is_income else 'bad' }}">{{ '+' if t.is_income else '−' }}{{ "%.2f"|format(t.Amount|float) }}</td>
+              <td class="num amount {{ 'good' if t.is_income else 'bad' }} {{ 'maskable-income' if t.is_income else '' }}">{{ '+' if t.is_income else '−' }}{{ "%.2f"|format(t.Amount|float) }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -232,6 +235,90 @@
   {% endif %}
 
   <script>
+  (function () {
+    var telegramBotLink = {{ telegram_bot_link|tojson }};
+
+    // Miller's Law: capped near 7±2 steps, and each step's own text stays to
+    // one short idea (see tour.js/style.css) rather than explaining several
+    // things at once.
+    var steps = [
+      { selector: '.brand', title: 'Welcome to Finance Tracker', text: "Quick tour of what's on this page — click Next, or Skip if you'd rather explore on your own." },
+      { selector: '.nav-links', title: 'Get around', text: 'Dashboard, Budgets, Categories, Reports, and Export — everything else lives behind these links.' },
+      { selector: '#month-picker-form', title: 'Pick a month', text: 'Every number on this page is scoped to one month. Switch months here to look back at past activity.' },
+      { selector: '.stat-grid', title: 'Your month at a glance', text: 'Income, expenses, net savings, and how much of your budget you’ve used so far.' },
+      { selector: '#chart-card', title: 'Planned vs. actual', text: 'Compare what you budgeted against what you actually spent, category by category.' },
+      { selector: '#recent-activity-card', title: 'Recent activity', text: 'Transactions you log via the Telegram bot show up here automatically.' },
+      { selector: '#insights-card', title: 'AI spending report', text: 'One click gets you a short, generated summary of what stands out this month.' },
+      { selector: '.status-badge', title: 'Bot status', text: 'Shows whether the Telegram bot is currently online and reachable.' },
+      {
+        selector: null,
+        title: "You're set",
+        text: telegramBotLink
+          ? 'Message the bot on Telegram to log your first transaction — just send something like "coffee 120".'
+          : 'Log a transaction by texting your Telegram bot something like "coffee 120".',
+        finishLabel: telegramBotLink ? 'Open bot on Telegram' : 'Done',
+      },
+    ];
+
+    var TOUR_DONE_KEY = 'dashboard_tour_done';
+
+    function runTour() {
+      Tour.start(steps, {
+        onEnd: function (finished) {
+          localStorage.setItem(TOUR_DONE_KEY, 'true');
+          if (finished && telegramBotLink) window.open(telegramBotLink, '_blank', 'noopener');
+        },
+      });
+    }
+
+    var replayBtn = document.getElementById('tour-replay-btn');
+    if (replayBtn) replayBtn.addEventListener('click', runTour);
+
+    if (!localStorage.getItem(TOUR_DONE_KEY)) {
+      // Let the page finish laying out (fonts, images, computed positions)
+      // before spotlighting anything, rather than racing first paint.
+      window.addEventListener('load', function () { setTimeout(runTour, 300); });
+    }
+  })();
+
+  (function () {
+    // Screen-share-safe income masking — a preference, not a security
+    // boundary (the real values are already in the page's HTML either way,
+    // just swapped in the DOM), so localStorage is the right amount of
+    // persistence: remembers your choice on this browser, nothing server-side.
+    var STORAGE_KEY = 'income_masked';
+    var MASK = '••••••';
+    var EYE_OPEN = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+    var EYE_CLOSED = '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+
+    var maskToggle = document.getElementById('income-mask-toggle');
+    var maskTargets = document.querySelectorAll('.maskable-income');
+
+    function maskedText(real) {
+      var sign = real.charAt(0);
+      return (sign === '+' || sign === '−' || sign === '-') ? sign + MASK : MASK;
+    }
+
+    function applyMaskState(masked) {
+      maskTargets.forEach(function (el) {
+        if (!el.dataset.real) el.dataset.real = el.textContent;
+        el.textContent = masked ? maskedText(el.dataset.real) : el.dataset.real;
+      });
+      maskToggle.setAttribute('aria-pressed', masked);
+      maskToggle.title = masked ? 'Show income' : 'Hide income';
+      maskToggle.setAttribute('aria-label', maskToggle.title);
+      maskToggle.querySelector('svg').innerHTML = masked ? EYE_CLOSED : EYE_OPEN;
+    }
+
+    applyMaskState(localStorage.getItem(STORAGE_KEY) === 'true');
+
+    maskToggle.addEventListener('click', function () {
+      var nowMasked = maskToggle.getAttribute('aria-pressed') !== 'true';
+      applyMaskState(nowMasked);
+      localStorage.setItem(STORAGE_KEY, nowMasked);
+    });
+  })();
+
   (function () {
     var btn = document.getElementById('insights-btn');
     var body = document.getElementById('insights-body');

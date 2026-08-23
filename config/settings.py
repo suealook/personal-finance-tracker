@@ -21,6 +21,9 @@ def _required(name: str) -> str:
 
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+# Optional — powers the "Open bot on Telegram" link on the dashboard/tour.
+# Just the @username (no "@" prefix needed), not a secret.
+TELEGRAM_BOT_USERNAME = os.environ.get("TELEGRAM_BOT_USERNAME", "")
 
 # Bootstrap-only default for scripts/init_sheet.py when no --sheet-id is
 # given — not read by any runtime request path. Each user's actual sheet id

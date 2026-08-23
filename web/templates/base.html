@@ -31,12 +31,21 @@
       <a href="{{ url_for('export_page') }}" class="{{ 'active' if request.endpoint in ('export_page', 'export_download') }}">Export</a>
       <a href="{{ url_for('update_page') }}" class="{{ 'active' if request.endpoint == 'update_page' }}">Status</a>
     </div>
-    {% if auth_enabled %}
-    <form method="post" action="{{ url_for('logout') }}" class="inline-form" style="margin-left: auto;">
-      <button type="submit" class="btn-ghost">Log out</button>
-    </form>
-    {% endif %}
+    <div class="nav-actions" style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+      {% if telegram_bot_link %}
+      <a href="{{ telegram_bot_link }}" target="_blank" rel="noopener" class="btn-ghost">Open bot on Telegram</a>
+      {% endif %}
+      {% if request.endpoint == 'dashboard' %}
+      <button type="button" id="tour-replay-btn" class="btn-ghost" title="Take a tour of the dashboard">? Tour</button>
+      {% endif %}
+      {% if auth_enabled %}
+      <form method="post" action="{{ url_for('logout') }}" class="inline-form">
+        <button type="submit" class="btn-ghost">Log out</button>
+      </form>
+      {% endif %}
+    </div>
   </nav>
+  <script src="{{ url_for('static', filename='tour.js', v=asset_version) }}"></script>
   <main>
     {% block content %}{% endblock %}
   </main>
