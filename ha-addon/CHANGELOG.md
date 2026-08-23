@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1 — PWA icons match the new palette
+
+- Regenerated the "Add to Home Screen" icons (icon-192.png, icon-512.png):
+  same rounded-square + ascending-bars mark as before, recolored from the
+  old solid blue to the blue->green gradient the 0.5.0 redesign's nav
+  brand mark already uses, so the home-screen icon and the in-app logo
+  now match. Same one-time Pillow script approach as the original icons —
+  geometric shapes only, not a runtime dependency.
+
 ## 0.5.0 — full visual redesign
 
 User-requested redesign matching a reference dashboard mockup — new color
