@@ -58,6 +58,23 @@ def _llm_rate_limited(key: str) -> bool:
     return False
 
 
+def _authority(netloc: str, scheme: str) -> str:
+    """Lowercased host[:port] with the scheme's own default port stripped, so
+    "example.com" and "example.com:443" compare equal for https (and
+    likewise :80 for http) — browsers never put a default port in an Origin
+    header, but a "host[:port]" value arriving via a reverse proxy's
+    X-Forwarded-Host isn't guaranteed to omit one. Comparing without this
+    normalization is a real, reachable false-positive: Caddy sits in front
+    of this app in every real deployment (see ProxyFix below), so the
+    request side of the comparison always goes through a header whose exact
+    port formatting isn't this app's to assume."""
+    host = netloc.lower()
+    default_port = {"https": "443", "http": "80"}.get(scheme)
+    if default_port and host.endswith(f":{default_port}"):
+        host = host[: -(len(default_port) + 1)]
+    return host
+
+
 def _safe_next_url(next_url: str) -> Optional[str]:
     """Only a same-site relative path is safe to redirect to post-login —
     never an attacker-suppliable absolute or protocol-relative URL, which
@@ -283,21 +300,27 @@ def create_app() -> Flask:
         # real, billed Claude API call). Checked before auth, and regardless of
         # whether a password is configured, since a forged request from
         # another site is a risk independent of authentication. Comparing
-        # origin_host != request.host directly (not "if origin_host and...")
+        # origin_host != request_host directly (not "if origin_host and...")
         # means a present-but-unparseable Origin — notably the literal string
         # "null" sent by sandboxed iframes and other opaque-origin requests,
         # which urlparse turns into an empty netloc — is rejected as a
         # mismatch instead of silently passing through. A request with
         # neither header at all (plain navigation, most non-browser clients)
-        # is still let through unchecked, same as before.
+        # is still let through unchecked, same as before. Both sides go
+        # through _authority() so a default-port formatting difference
+        # between the browser's Origin and this app's (proxied) request.host
+        # can't produce a false-positive rejection — see that helper's
+        # docstring for why that's a real, not hypothetical, case here.
         origin = request.headers.get("Origin") or request.headers.get("Referer")
         # A real Google redirect back to /auth/google/callback arrives with an
         # external Referer (accounts.google.com) — that's expected there, and
         # that route's own defense against a forged callback is the OAuth
         # `state` parameter it checks itself, not this generic same-site check.
         if origin and request.endpoint != "auth_google_callback":
-            origin_host = urlparse(origin).netloc
-            if origin_host != request.host:
+            parsed_origin = urlparse(origin)
+            origin_host = _authority(parsed_origin.netloc, parsed_origin.scheme)
+            request_host = _authority(request.host, request.scheme)
+            if origin_host != request_host:
                 return Response("Cross-origin request rejected.", status=403)
 
         # Auth: Google Sign-In + signed session cookie, required whenever it's
