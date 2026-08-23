@@ -27,9 +27,18 @@ def _client_config(redirect_uri: str) -> dict:
     }
 
 
-def build_flow(redirect_uri: str, state: str | None = None) -> Flow:
+def build_flow(redirect_uri: str, state: str | None = None, code_verifier: str | None = None) -> Flow:
+    # code_verifier must be the SAME value on both the authorization request
+    # (start route) and the token exchange (callback route) — PKCE, RFC 7636.
+    # Flow auto-generates one per-instance by default, which doesn't survive
+    # across two separate requests/processes, so the caller must generate it
+    # once and pass it explicitly both times (stored in the session between).
     return Flow.from_client_config(
-        _client_config(redirect_uri), scopes=SCOPES, state=state, redirect_uri=redirect_uri
+        _client_config(redirect_uri),
+        scopes=SCOPES,
+        state=state,
+        redirect_uri=redirect_uri,
+        code_verifier=code_verifier,
     )
 
 

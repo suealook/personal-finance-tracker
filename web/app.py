@@ -335,23 +335,30 @@ def create_app() -> Flask:
     @app.route("/auth/google/start", methods=["POST"])
     def auth_google_start():
         state = secrets.token_urlsafe(24)
+        code_verifier = secrets.token_urlsafe(64)
         session["oauth_state"] = state
+        session["oauth_code_verifier"] = code_verifier
         session["oauth_remember_me"] = bool(request.form.get("remember_me"))
         session["oauth_next"] = request.form.get("next") or ""
-        flow = google_auth.build_flow(url_for("auth_google_callback", _external=True), state=state)
+        flow = google_auth.build_flow(
+            url_for("auth_google_callback", _external=True), state=state, code_verifier=code_verifier
+        )
         authorization_url, _ = flow.authorization_url(access_type="online", prompt="select_account")
         return redirect(authorization_url)
 
     @app.route("/auth/google/callback")
     def auth_google_callback():
         expected_state = session.pop("oauth_state", None)
-        if not expected_state or request.args.get("state") != expected_state:
+        code_verifier = session.pop("oauth_code_verifier", None)
+        if not expected_state or not code_verifier or request.args.get("state") != expected_state:
             return Response("Invalid or expired sign-in attempt — please try again.", status=400)
 
         remember_me = session.pop("oauth_remember_me", False)
         next_url = session.pop("oauth_next", "")
 
-        flow = google_auth.build_flow(url_for("auth_google_callback", _external=True), state=expected_state)
+        flow = google_auth.build_flow(
+            url_for("auth_google_callback", _external=True), state=expected_state, code_verifier=code_verifier
+        )
         try:
             claims = google_auth.exchange_code(flow, request.url)
         except Exception:
