@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.6.0 — real HTTPS via a bundled Caddy reverse proxy
+
+Root-caused why iPhone Safari couldn't reach the dashboard at all (while
+Home Assistant's own port worked fine): Safari automatically tries HTTPS
+first for a bare-typed hostname, and this add-on only ever spoke plain
+HTTP — so that attempt hit a server that couldn't parse the TLS handshake,
+and the connection died outright ("network connection was lost"), with no
+certificate warning to click past and no reliable fallback to HTTP.
+
+- **The dashboard is now HTTPS-only**, at the same address and port as
+  before (`https://<your-ha-ip>:5000` — note the changed scheme). A
+  bundled [Caddy](https://caddyserver.com) reverse proxy terminates TLS
+  with a self-signed certificate it generates and manages automatically
+  (`tls internal`), forwarding to the Flask app over plain HTTP on an
+  internal-only port never exposed outside the container. Every device
+  needs a one-time "trust this certificate" step on first visit (in
+  Safari: "Show Details" → "visit this website") — after that it's
+  seamless, and Safari's automatic HTTPS attempt now actually succeeds
+  instead of failing.
+- **First attempt was Flask's own built-in TLS support**
+  (`ssl_context=`), generating a self-signed cert directly — reverted
+  before shipping. Testing surfaced real connection instability under
+  realistic browser-like traffic patterns (Werkzeug's dev server explicitly
+  documents itself as unfit for production, TLS included); Caddy is the
+  properly battle-tested tool for this exact job instead.
+- `run_supervisor.py` now supervises three processes (bot, web, caddy)
+  instead of two, with the same per-process restart-in-place behavior
+  from 0.4.6 — one crashing doesn't take the others down with it.
+- Existing bookmarks/PWA home-screen shortcuts using `http://` will stop
+  working (the port no longer speaks plain HTTP at all) — re-save them
+  with `https://` once, same one-time step as trusting the certificate.
+
 ## 0.5.1 — PWA icons match the new palette
 
 - Regenerated the "Add to Home Screen" icons (icon-192.png, icon-512.png):

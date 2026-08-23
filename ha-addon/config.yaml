@@ -1,5 +1,5 @@
 name: "Personal Finance Tracker"
-version: "0.5.1"
+version: "0.6.0"
 slug: "personal_finance"
 description: "Telegram-logged budget tracker with a local dashboard and Claude-powered insights"
 url: "https://github.com/suealook/personal-finance-tracker"
@@ -11,7 +11,7 @@ boot: auto
 ports:
   5000/tcp: 5000
 ports_description:
-  5000/tcp: "Web dashboard"
+  5000/tcp: "Web dashboard (HTTPS)"
 hassio_api: true
 hassio_role: default
 options:

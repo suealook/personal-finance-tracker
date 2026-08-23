@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Minimal process supervisor for the add-on container: starts the bot and web
-processes directly and watches both. Forwards SIGTERM/SIGINT (from `docker
-stop` / Supervisor) to both children for a clean shutdown.
+"""Minimal process supervisor for the add-on container: starts the bot, web,
+and caddy processes directly and watches all three. Forwards SIGTERM/SIGINT
+(from `docker stop` / Supervisor) to every child for a clean shutdown.
 
 This exists in place of relying on the base image's s6-overlay service
 supervision (the previous approach): that repeatedly failed with
@@ -26,6 +26,7 @@ import time
 PROCESSES = [
     ("bot", ["python3", "scripts/run_bot.py"]),
     ("web", ["python3", "scripts/run_web.py"]),
+    ("caddy", ["/usr/local/bin/caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]),
 ]
 
 MAX_RESTARTS = 5

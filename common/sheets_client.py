@@ -8,6 +8,7 @@ sheet's tab/column layout.
 import contextlib
 import re
 import sys
+import threading
 import time
 from typing import Callable, Optional
 
@@ -80,6 +81,7 @@ _retry = retry(
 )
 
 _sheets_call_count = 0
+_sheets_call_count_lock = threading.Lock()
 
 
 def _retryable(func):
@@ -89,7 +91,8 @@ def _retryable(func):
 
     def wrapper(*args, **kwargs):
         global _sheets_call_count
-        _sheets_call_count += 1
+        with _sheets_call_count_lock:
+            _sheets_call_count += 1
         return retried(*args, **kwargs)
 
     wrapper.__name__ = getattr(func, "__name__", "wrapped")
