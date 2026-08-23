@@ -6,15 +6,20 @@ import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
 import markdown as markdown_lib
 import pandas as pd
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_file, session, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from common import categories as categories_module
+from common import gcp_info
+from common import google_auth
 from common import sheets_client
 from common import usage_tracker
+from common import users as users_module
 from common.dateutil_helpers import current_month, last_n_months, month_bounds, previous_month, year_bounds
 from common.heartbeat import heartbeat_age_seconds
 from common.llm_analysis import compute_variance, dashboard_insights, generate_and_save_report
@@ -23,8 +28,6 @@ from config import settings
 SPARKLINE_MONTHS = 6
 MAX_GROUP_SLOTS = 6  # + one folded "Other" bucket = 7 visual segments max
 LLM_CALL_COOLDOWN_SECONDS = 10  # guards /api/insights and /reports/generate against cost-abuse loops
-LOGIN_MAX_ATTEMPTS = 5           # failed attempts allowed per source IP...
-LOGIN_LOCKOUT_SECONDS = 30       # ...within this window, before a cooldown kicks in
 
 ALLOWED_REPORT_TAGS = [
     "p", "br", "strong", "em", "ul", "ol", "li", "h1", "h2", "h3", "h4",
@@ -36,8 +39,13 @@ WEB_STARTED_AT = datetime.now(timezone.utc)
 BOT_HEARTBEAT_RUNNING_SECONDS = 90    # < this since last heartbeat: bot is fine
 BOT_HEARTBEAT_STALE_SECONDS = 180     # < this: bot may be restarting/hung; >= this: not responding
 
+# stat-value's CSS only defines .good/.warning/.bad — statuses speak "critical"
+# (matching the nav bar's status-badge, which does support that name), so this
+# translates for the one component that needs it instead of duplicating the
+# state strings themselves.
+_STATE_CSS = {"good": "good", "warning": "warning", "critical": "bad", "unknown": ""}
+
 _last_llm_call_at: dict[str, float] = {}
-_login_failures: dict[str, list[float]] = {}
 
 
 def _llm_rate_limited(key: str) -> bool:
@@ -50,19 +58,13 @@ def _llm_rate_limited(key: str) -> bool:
     return False
 
 
-def _login_locked_out(source: str) -> bool:
-    """True if `source` (the requester's IP) has failed to log in
-    LOGIN_MAX_ATTEMPTS times within LOGIN_LOCKOUT_SECONDS — blunts password
-    brute-forcing now that login goes through a real form instead of the
-    browser's own Basic Auth prompt."""
-    now = time.time()
-    recent = [t for t in _login_failures.get(source, []) if now - t < LOGIN_LOCKOUT_SECONDS]
-    _login_failures[source] = recent
-    return len(recent) >= LOGIN_MAX_ATTEMPTS
-
-
-def _record_login_failure(source: str):
-    _login_failures.setdefault(source, []).append(time.time())
+def _safe_next_url(next_url: str) -> Optional[str]:
+    """Only a same-site relative path is safe to redirect to post-login —
+    never an attacker-suppliable absolute or protocol-relative URL, which
+    would turn the login flow into an open-redirect phishing vector."""
+    if next_url and next_url.startswith("/") and not next_url.startswith("//") and "\\" not in next_url:
+        return next_url
+    return None
 
 
 def _bot_status() -> dict:
@@ -82,6 +84,35 @@ def _sheets_status() -> dict:
         return {"state": "good", "label": "Connected", "detail": spreadsheet.title}
     except Exception as e:
         return {"state": "critical", "label": "Not connected", "detail": str(e)}
+
+
+def _gather_status() -> dict:
+    """Every live check the Status page shows, gathered in one place so
+    landing on the page and clicking "Retrieve status" run the exact same
+    code path — nothing polls this on an interval, it only ever runs on a
+    page load or an explicit click, to keep Sheets/metadata-server calls to
+    a minimum."""
+    web = {
+        "state": "good",
+        "label": "Running",
+        "detail": f"Up since {WEB_STARTED_AT.strftime('%Y-%m-%d %H:%M UTC')}",
+    }
+    bot = _bot_status()
+    sheets = _sheets_status()
+    vm = gcp_info.get_vm_status()
+    for status in (web, bot, sheets, vm):
+        status["css"] = _STATE_CSS.get(status["state"], "")
+    return {
+        "web_status": web,
+        "bot_status": bot,
+        "sheets_status": sheets,
+        "vm_status": vm,
+        "cost_estimate": gcp_info.get_cost_estimate(),
+        "claude_usage": usage_tracker.get_claude_usage_summary(),
+        "sheets_call_count": sheets_client.get_sheets_call_count(),
+        "claude_model": settings.CLAUDE_MODEL,
+        "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+    }
 
 
 def _income_and_spend(txns: list[dict], cat_types: dict[str, str]) -> tuple[float, float]:
@@ -186,17 +217,35 @@ def create_app() -> Flask:
     # Fail-closed tied to actual network exposure, not an environment guess:
     # anything other than loopback-only means the dashboard is reachable by
     # someone other than this machine (LAN or public internet), so it must
-    # not run without a password.
-    if settings.WEB_BIND_HOST not in ("127.0.0.1", "localhost") and not settings.DASHBOARD_PASSWORD:
+    # not run without Google Sign-In configured and at least one allowed user.
+    not_loopback = settings.WEB_BIND_HOST not in ("127.0.0.1", "localhost")
+    if not_loopback and not (settings.GOOGLE_OAUTH_CLIENT_ID and settings.GOOGLE_OAUTH_CLIENT_SECRET):
         raise RuntimeError(
-            "DASHBOARD_PASSWORD is not set. The dashboard is bound to "
+            "GOOGLE_OAUTH_CLIENT_ID/GOOGLE_OAUTH_CLIENT_SECRET are not set. The "
+            f"dashboard is bound to {settings.WEB_BIND_HOST!r} (not loopback-only), "
+            "so it must not run without Google Sign-In configured. See SETUP.md."
+        )
+    if not_loopback and not users_module.any_users_configured():
+        raise RuntimeError(
+            "No users configured in data/users.json. The dashboard is bound to "
             f"{settings.WEB_BIND_HOST!r} (not loopback-only), so it must not run "
-            "without a password. Set DASHBOARD_PASSWORD in your .env file."
+            "without at least one allowed user. See SETUP.md."
         )
 
     app = Flask(__name__)
     app.secret_key = settings.FLASK_SECRET_KEY
-    app.permanent_session_lifetime = timedelta(days=30)
+    app.permanent_session_lifetime = timedelta(days=3)
+    if not_loopback:
+        # Always true once this is behind Caddy's HTTPS per DEPLOY.md — guarded
+        # so a developer running the plain-HTTP dev server locally doesn't get
+        # their session cookie silently dropped by the browser.
+        app.config["SESSION_COOKIE_SECURE"] = True
+        # Caddy proxies to this Flask process over plain HTTP internally and
+        # sets X-Forwarded-Proto/Host (its default reverse_proxy behavior) —
+        # trust exactly one hop of those so url_for(_external=True) reports
+        # https and the real host instead of Flask's own view of the
+        # connection, which the OAuth redirect URI must match exactly.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
     # Cache-busting for static assets: without this, style.css is served from a
     # fixed URL forever, so a browser that already cached an old copy has no
@@ -208,10 +257,10 @@ def create_app() -> Flask:
     except OSError:
         app.jinja_env.globals["asset_version"] = str(int(WEB_STARTED_AT.timestamp()))
 
-    # Just whether a password is configured, never the value itself — lets
+    # Just whether Google Sign-In is configured, never any secret — lets
     # base.html show/hide the Log out button without templates touching
     # settings directly.
-    app.jinja_env.globals["dashboard_password_set"] = bool(settings.DASHBOARD_PASSWORD)
+    app.jinja_env.globals["auth_enabled"] = bool(settings.GOOGLE_OAUTH_CLIENT_ID)
 
     @app.context_processor
     def _inject_bot_status():
@@ -234,64 +283,86 @@ def create_app() -> Flask:
         # neither header at all (plain navigation, most non-browser clients)
         # is still let through unchecked, same as before.
         origin = request.headers.get("Origin") or request.headers.get("Referer")
-        if origin:
+        # A real Google redirect back to /auth/google/callback arrives with an
+        # external Referer (accounts.google.com) — that's expected there, and
+        # that route's own defense against a forged callback is the OAuth
+        # `state` parameter it checks itself, not this generic same-site check.
+        if origin and request.endpoint != "auth_google_callback":
             origin_host = urlparse(origin).netloc
             if origin_host != request.host:
                 return Response("Cross-origin request rejected.", status=403)
 
-        # Auth: a real login page + signed session cookie, required whenever a
-        # password is configured (always true once bound beyond loopback, per
-        # the fail-closed check above; optional for local dev, which is bound
-        # to 127.0.0.1 only). /login and static assets stay reachable without
-        # a session so the login page itself — and its CSS — can load at all.
-        if settings.DASHBOARD_PASSWORD and request.endpoint not in ("login", "static") and not session.get("authenticated"):
-            # JS-driven endpoints get a JSON 401 instead of a redirect, so a
-            # session expiring mid-page-load fails cleanly in fetch() instead
-            # of silently handing the caller the login page's HTML.
-            if request.path.startswith("/api/"):
-                return jsonify({"error": "Authentication required"}), 401
-            next_path = request.full_path if request.query_string else request.path
-            return redirect(url_for("login", next=next_path))
+        # Auth: Google Sign-In + signed session cookie, required whenever it's
+        # configured (always true once bound beyond loopback, per the
+        # fail-closed check above; optional for local dev, which is bound to
+        # 127.0.0.1 only). Re-resolves the session's email against
+        # data/users.json on every request — not just checking a cookie flag —
+        # so removing someone from that file actually revokes their access
+        # instead of leaving an old session usable. /login, the OAuth routes,
+        # and static assets stay reachable without a session.
+        if request.endpoint == "static":
+            return
+        if not settings.GOOGLE_OAUTH_CLIENT_ID:
+            # No login gate configured (local dev, matching how an unset
+            # DASHBOARD_PASSWORD used to leave the app fully open) — fall
+            # back to the single sheet from .env, same as before multi-user
+            # accounts existed.
+            sheets_client.set_current_sheet(settings.GOOGLE_SHEET_ID)
+            return
+        if request.endpoint not in ("login", "auth_google_start", "auth_google_callback"):
+            user = users_module.get_user_by_email(session.get("user_email", ""))
+            if user is None:
+                if request.path.startswith("/api/"):
+                    return jsonify({"error": "Authentication required"}), 401
+                next_path = request.full_path if request.query_string else request.path
+                return redirect(url_for("login", next=next_path))
+            sheets_client.set_current_sheet(user["sheet_id"])
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        if not settings.DASHBOARD_PASSWORD:
+        if not settings.GOOGLE_OAUTH_CLIENT_ID:
             return redirect(url_for("dashboard"))
+        return render_template("login.html", next=request.values.get("next") or "")
 
-        next_url = request.values.get("next") or ""
-        error = None
+    @app.route("/auth/google/start", methods=["POST"])
+    def auth_google_start():
+        state = secrets.token_urlsafe(24)
+        session["oauth_state"] = state
+        session["oauth_remember_me"] = bool(request.form.get("remember_me"))
+        session["oauth_next"] = request.form.get("next") or ""
+        flow = google_auth.build_flow(url_for("auth_google_callback", _external=True), state=state)
+        authorization_url, _ = flow.authorization_url(access_type="online", prompt="select_account")
+        return redirect(authorization_url)
 
-        if request.method == "POST":
-            source = request.remote_addr or "unknown"
-            if _login_locked_out(source):
-                error = f"Too many attempts — wait {LOGIN_LOCKOUT_SECONDS} seconds and try again."
-            else:
-                username = request.form.get("username", "")
-                password = request.form.get("password", "")
-                username_ok = not settings.DASHBOARD_USERNAME or secrets.compare_digest(
-                    username, settings.DASHBOARD_USERNAME
-                )
-                password_ok = secrets.compare_digest(password, settings.DASHBOARD_PASSWORD)
-                if username_ok and password_ok:
-                    session.clear()
-                    session["authenticated"] = True
-                    session.permanent = True
-                    # Only follow a same-site relative path — never an
-                    # attacker-suppliable absolute or protocol-relative URL,
-                    # which would turn this into an open-redirect phishing
-                    # vector for the login form itself.
-                    if next_url.startswith("/") and not next_url.startswith("//") and "\\" not in next_url:
-                        return redirect(next_url)
-                    return redirect(url_for("dashboard"))
-                _record_login_failure(source)
-                error = "Incorrect username or password."
+    @app.route("/auth/google/callback")
+    def auth_google_callback():
+        expected_state = session.pop("oauth_state", None)
+        if not expected_state or request.args.get("state") != expected_state:
+            return Response("Invalid or expired sign-in attempt — please try again.", status=400)
 
-        return render_template(
-            "login.html",
-            error=error,
-            next=next_url,
-            username_required=bool(settings.DASHBOARD_USERNAME),
-        )
+        remember_me = session.pop("oauth_remember_me", False)
+        next_url = session.pop("oauth_next", "")
+
+        flow = google_auth.build_flow(url_for("auth_google_callback", _external=True), state=expected_state)
+        try:
+            claims = google_auth.exchange_code(flow, request.url)
+        except Exception:
+            app.logger.exception("Google OAuth code exchange failed")
+            return Response("Google sign-in failed — please try again.", status=400)
+
+        email = claims.get("email")
+        if not claims.get("email_verified") or not email:
+            return Response("Your Google account's email isn't verified.", status=403)
+
+        user = users_module.get_user_by_email(email)
+        if user is None:
+            return render_template("login.html", next="", error=f"{email} isn't authorized for this app.")
+
+        session.clear()
+        session["user_email"] = user["email"]
+        session.permanent = remember_me
+
+        return redirect(_safe_next_url(next_url) or url_for("dashboard"))
 
     @app.route("/logout", methods=["POST"])
     def logout():
@@ -716,18 +787,14 @@ def create_app() -> Flask:
         # git changes and restart its own services is a privilege-escalation
         # smell on a public VM; updating here is a manual `git pull` +
         # `systemctl restart` over SSH, same as any other self-managed host.
-        return render_template(
-            "update.html",
-            web_status={
-                "state": "good",
-                "label": "Running",
-                "detail": f"Up since {WEB_STARTED_AT.strftime('%Y-%m-%d %H:%M UTC')}",
-            },
-            bot_status=_bot_status(),
-            sheets_status=_sheets_status(),
-            claude_usage=usage_tracker.get_claude_usage_summary(),
-            sheets_call_count=sheets_client.get_sheets_call_count(),
-            claude_model=settings.CLAUDE_MODEL,
-        )
+        return render_template("update.html", **_gather_status())
+
+    @app.route("/api/status/refresh", methods=["POST"])
+    def api_status_refresh():
+        # The one place all these checks re-run after the initial page load —
+        # deliberately button-triggered only, no client-side polling, so a
+        # tab left open doesn't keep re-hitting the Sheets API or the
+        # metadata server on a timer.
+        return jsonify(_gather_status())
 
     return app

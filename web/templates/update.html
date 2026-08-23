@@ -1,23 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Status{% endblock %}
 {% block content %}
-  <h1>Status</h1>
+  <div style="display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+    <h1>Status</h1>
+    <div style="display: flex; align-items: center; gap: 0.7rem;">
+      <span id="status-checked-at" class="muted" style="font-size: 0.82rem;">Checked {{ checked_at }}</span>
+      <button type="button" id="status-refresh-btn" class="btn-ghost">Retrieve all services status</button>
+    </div>
+  </div>
 
-  <div class="stat-grid">
-    <div class="card stat-tile">
+  <div class="stat-grid" id="status-grid">
+    <div class="card stat-tile" data-tile="web">
       <div class="stat-label">Web</div>
-      <div class="stat-value good">{{ web_status.label }}</div>
-      <div class="stat-delta neutral">{{ web_status.detail }}</div>
+      <div class="stat-value {{ web_status.css }}" data-field="label">{{ web_status.label }}</div>
+      <div class="stat-delta neutral" data-field="detail">{{ web_status.detail }}</div>
     </div>
-    <div class="card stat-tile">
+    <div class="card stat-tile" data-tile="bot">
       <div class="stat-label">Bot</div>
-      <div class="stat-value {{ bot_status.state if bot_status.state in ('good', 'warning', 'bad') else '' }}">{{ bot_status.label }}</div>
-      <div class="stat-delta neutral">{{ bot_status.detail }}</div>
+      <div class="stat-value {{ bot_status.css }}" data-field="label">{{ bot_status.label }}</div>
+      <div class="stat-delta neutral" data-field="detail">{{ bot_status.detail }}</div>
     </div>
-    <div class="card stat-tile">
+    <div class="card stat-tile" data-tile="sheets">
       <div class="stat-label">Google Sheets</div>
-      <div class="stat-value {{ 'good' if sheets_status.state == 'good' else 'bad' }}">{{ sheets_status.label }}</div>
-      <div class="stat-delta neutral">{{ sheets_status.detail }}</div>
+      <div class="stat-value {{ sheets_status.css }}" data-field="label">{{ sheets_status.label }}</div>
+      <div class="stat-delta neutral" data-field="detail">{{ sheets_status.detail }}</div>
+    </div>
+    <div class="card stat-tile" data-tile="vm">
+      <div class="stat-label">VM instance</div>
+      <div class="stat-value {{ vm_status.css }}" data-field="label">{{ vm_status.label }}</div>
+      <div class="stat-delta neutral" data-field="detail">{{ vm_status.detail }}</div>
     </div>
   </div>
 
@@ -34,15 +45,21 @@
       <tbody>
         <tr>
           <td>Claude API</td>
-          <td>{{ claude_usage.call_count }}</td>
-          <td>{{ "{:,}".format(claude_usage.input_tokens) }} in / {{ "{:,}".format(claude_usage.output_tokens) }} out</td>
-          <td>${{ "%.2f"|format(claude_usage.cost_usd) }} (~฿{{ "%.2f"|format(claude_usage.cost_thb) }})</td>
+          <td data-field="claude-calls">{{ claude_usage.call_count }}</td>
+          <td data-field="claude-tokens">{{ "{:,}".format(claude_usage.input_tokens) }} in / {{ "{:,}".format(claude_usage.output_tokens) }} out</td>
+          <td data-field="claude-cost">${{ "%.2f"|format(claude_usage.cost_usd) }} (~฿{{ "%.2f"|format(claude_usage.cost_thb) }})</td>
         </tr>
         <tr>
           <td>Google Sheets API</td>
-          <td>{{ sheets_call_count }}</td>
+          <td data-field="sheets-calls">{{ sheets_call_count }}</td>
           <td>&mdash;</td>
           <td class="muted">Free (no per-call billing)</td>
+        </tr>
+        <tr>
+          <td>GCP VM (Compute)</td>
+          <td>&mdash;</td>
+          <td>&mdash;</td>
+          <td data-field="vm-cost">{{ cost_estimate.label }}</td>
         </tr>
       </tbody>
     </table>
@@ -51,6 +68,57 @@
       Claude cost is a rough estimate: standard list pricing for {{ claude_model }} at a fixed
       ~36 THB/USD, cumulative since the web service was last (re)started — not a live exchange
       rate or an actual bill. Sheets call count resets the same way.
+      <span data-field="vm-cost-detail">{{ cost_estimate.detail }}</span>
     </p>
   </div>
+
+  <script>
+    (function () {
+      const STATE_LABEL_CLASS = ["good", "warning", "bad"];
+      const btn = document.getElementById("status-refresh-btn");
+      const checkedAt = document.getElementById("status-checked-at");
+
+      function applyTile(name, status) {
+        const tile = document.querySelector('[data-tile="' + name + '"]');
+        if (!tile || !status) return;
+        const label = tile.querySelector('[data-field="label"]');
+        const detail = tile.querySelector('[data-field="detail"]');
+        label.textContent = status.label;
+        label.classList.remove(...STATE_LABEL_CLASS);
+        if (status.css) label.classList.add(status.css);
+        detail.textContent = status.detail;
+      }
+
+      btn.addEventListener("click", async function () {
+        btn.disabled = true;
+        btn.textContent = "Checking…";
+        try {
+          const resp = await fetch("{{ url_for('api_status_refresh') }}", { method: "POST" });
+          if (!resp.ok) throw new Error("status " + resp.status);
+          const data = await resp.json();
+
+          applyTile("web", data.web_status);
+          applyTile("bot", data.bot_status);
+          applyTile("sheets", data.sheets_status);
+          applyTile("vm", data.vm_status);
+
+          document.querySelector('[data-field="claude-calls"]').textContent = data.claude_usage.call_count;
+          document.querySelector('[data-field="claude-tokens"]').textContent =
+            data.claude_usage.input_tokens.toLocaleString() + " in / " + data.claude_usage.output_tokens.toLocaleString() + " out";
+          document.querySelector('[data-field="claude-cost"]').textContent =
+            "$" + data.claude_usage.cost_usd.toFixed(2) + " (~฿" + data.claude_usage.cost_thb.toFixed(2) + ")";
+          document.querySelector('[data-field="sheets-calls"]').textContent = data.sheets_call_count;
+          document.querySelector('[data-field="vm-cost"]').textContent = data.cost_estimate.label;
+          document.querySelector('[data-field="vm-cost-detail"]').textContent = " " + data.cost_estimate.detail;
+
+          checkedAt.textContent = "Checked " + data.checked_at;
+        } catch (err) {
+          checkedAt.textContent = "Refresh failed — try again";
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Retrieve all services status";
+        }
+      });
+    })();
+  </script>
 {% endblock %}

@@ -10,7 +10,7 @@
 </head>
 <body>
   <div class="login-wrap">
-    <form class="card login-card" method="post" action="{{ url_for('login') }}">
+    <form class="card login-card" method="post" action="{{ url_for('auth_google_start') }}">
       <h1 class="login-title">Finance Tracker</h1>
       <p class="muted login-subtitle">Sign in to continue</p>
 
@@ -20,24 +20,12 @@
 
       <input type="hidden" name="next" value="{{ next }}">
 
-      {% if username_required %}
-      <label class="login-field">
-        Username
-        <input type="text" name="username" autocomplete="username" autofocus required>
-      </label>
-      {% endif %}
-
-      <label class="login-field">
-        Password
-        <input type="password" name="password" autocomplete="current-password" required {{ 'autofocus' if not username_required }}>
+      <label class="login-field" style="flex-direction: row; align-items: center; gap: 0.5rem;">
+        <input type="checkbox" name="remember_me" style="width: auto;">
+        Remember me for 3 days
       </label>
 
-      <button type="submit">Sign in</button>
-
-      <p class="muted login-forgot">
-        Forgot your password? Reset <code>DASHBOARD_PASSWORD</code> in the
-        server's <code>.env</code> file and restart the web service.
-      </p>
+      <button type="submit">Sign in with Google</button>
     </form>
   </div>
 </body>

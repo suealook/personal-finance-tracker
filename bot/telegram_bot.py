@@ -10,6 +10,7 @@ from telegram.ext import (
 )
 
 from bot import handlers
+from common import users as users_module
 from common.heartbeat import write_heartbeat
 from config import settings
 
@@ -45,8 +46,8 @@ async def _post_init(app: Application):
 def build_application() -> Application:
     if not settings.TELEGRAM_BOT_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not set — check your .env file.")
-    if not settings.TELEGRAM_ALLOWED_USER_ID:
-        raise RuntimeError("TELEGRAM_ALLOWED_USER_ID is not set — check your .env file.")
+    if not users_module.any_users_configured():
+        raise RuntimeError("No users configured in data/users.json — see SETUP.md.")
 
     app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
 

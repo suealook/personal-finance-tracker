@@ -1,5 +1,10 @@
-"""One-time (idempotent) setup: creates the 5 tabs with correct headers in the
-Google Sheet referenced by GOOGLE_SHEET_ID. Safe to re-run.
+"""One-time (idempotent) setup: creates the 5 tabs with correct headers in a
+Google Sheet. Safe to re-run.
+
+Usage: python scripts/init_sheet.py [sheet-id]
+With no argument, falls back to GOOGLE_SHEET_ID in .env — useful for the
+first/only sheet during initial setup. When onboarding an additional user,
+pass their sheet's id explicitly instead.
 """
 
 import sys
@@ -10,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from gspread.exceptions import WorksheetNotFound  # noqa: E402
 
 from common import sheets_client  # noqa: E402
+from config import settings  # noqa: E402
 
 
 def ensure_tab(spreadsheet, tab_name: str, header: list[str]):
@@ -29,6 +35,11 @@ def ensure_tab(spreadsheet, tab_name: str, header: list[str]):
 
 
 def main():
+    sheet_id = sys.argv[1] if len(sys.argv) > 1 else settings.GOOGLE_SHEET_ID
+    if not sheet_id:
+        print("Usage: python scripts/init_sheet.py [sheet-id]  (or set GOOGLE_SHEET_ID in .env)")
+        sys.exit(1)
+    sheets_client.set_current_sheet(sheet_id)
     spreadsheet = sheets_client.get_spreadsheet()
     for tab_name, header in sheets_client.HEADERS.items():
         ensure_tab(spreadsheet, tab_name, header)

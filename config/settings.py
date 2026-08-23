@@ -21,12 +21,21 @@ def _required(name: str) -> str:
 
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_ALLOWED_USER_ID = os.environ.get("TELEGRAM_ALLOWED_USER_ID", "")
 
+# Bootstrap-only default for scripts/init_sheet.py when no --sheet-id is
+# given — not read by any runtime request path. Each user's actual sheet id
+# lives in data/users.json (see common/users.py) instead, since a single
+# deployment now serves multiple users, each with their own sheet.
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
 GOOGLE_SERVICE_ACCOUNT_FILE = str(
     BASE_DIR / os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "data/credentials/service_account.json")
 )
+
+# "Sign in with Google" OAuth client — create one in the GCP Console under
+# APIs & Services -> Credentials -> OAuth client ID (Web application), with
+# an authorized redirect URI of https://<your-domain-or-ip>/auth/google/callback.
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
@@ -41,15 +50,6 @@ WEB_BIND_HOST = os.environ.get("WEB_BIND_HOST", "127.0.0.1")
 # deployment shape, so this has to be its own explicit flag, off by default.
 DEBUG = os.environ.get("FLASK_DEBUG", "").strip().lower() in ("1", "true", "yes")
 
-# Required whenever WEB_BIND_HOST isn't loopback-only (enforced, fail-closed,
-# in web/app.py specifically — not here, since this module is also imported
-# by the bot process, which has no need for this password). Optional for
-# local dev, which stays on 127.0.0.1 by default.
-DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
-# Optional — if blank, the login page accepts any username alongside the
-# correct password (password-only).
-DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "")
-
 REPORTS_CACHE_DIR = DATA_DIR / "reports_cache"
 HEARTBEAT_DIR = DATA_DIR
 
@@ -57,7 +57,7 @@ HEARTBEAT_DIR = DATA_DIR
 def _get_or_create_secret_key() -> str:
     """A random key for signing session cookies, generated once and persisted
     to disk so sessions survive restarts/deploys — never typed by the user,
-    never in git, never in chat, unlike DASHBOARD_PASSWORD above."""
+    never in git, never in chat."""
     path = HEARTBEAT_DIR / "flask_secret_key"
     try:
         if path.exists():

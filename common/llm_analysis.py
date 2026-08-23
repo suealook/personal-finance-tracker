@@ -193,8 +193,9 @@ def generate_and_save_report(month: str) -> dict:
     }
     sheets_client.append_report(row)
     try:
-        settings.REPORTS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        (settings.REPORTS_CACHE_DIR / f"{month}.md").write_text(report_text, encoding="utf-8")
+        cache_dir = settings.REPORTS_CACHE_DIR / sheets_client.get_current_sheet_id()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / f"{month}.md").write_text(report_text, encoding="utf-8")
     except OSError:
         pass
     return row

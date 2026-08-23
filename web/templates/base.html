@@ -31,7 +31,7 @@
       <a href="{{ url_for('export_page') }}" class="{{ 'active' if request.endpoint in ('export_page', 'export_download') }}">Export</a>
       <a href="{{ url_for('update_page') }}" class="{{ 'active' if request.endpoint == 'update_page' }}">Status</a>
     </div>
-    {% if dashboard_password_set %}
+    {% if auth_enabled %}
     <form method="post" action="{{ url_for('logout') }}" class="inline-form" style="margin-left: auto;">
       <button type="submit" class="btn-ghost">Log out</button>
     </form>

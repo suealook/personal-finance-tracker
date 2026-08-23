@@ -6,6 +6,7 @@ sheet's tab/column layout.
 """
 
 import contextlib
+import contextvars
 import re
 import sys
 import time
@@ -113,10 +114,38 @@ def _sanitize_cell(value):
 
 
 _client = None
-_spreadsheet = None
-_category_cache: Optional[list] = None
-_category_cache_at: float = 0.0
+# One spreadsheet per user, all opened through the same service account
+# (which must be individually shared on each user's sheet) — cached per
+# sheet id rather than one global, since a single process now serves
+# multiple users' requests.
+_spreadsheets: dict[str, "gspread.Spreadsheet"] = {}
+_category_cache: dict[str, tuple[list, float]] = {}
 CATEGORY_CACHE_TTL_SECONDS = 30
+
+# Which sheet the current request/update is for. Set once per entry point —
+# Flask's before_request, or the bot's `restricted` decorator — and read by
+# every function below via get_spreadsheet(), so none of them need a sheet_id
+# parameter threaded through individually. Isolated per-request because each
+# Flask request here runs in its own fresh thread (dev server, threaded=True,
+# a new thread per connection rather than a reused pool) and each Telegram
+# update runs in its own asyncio Task — contextvars don't leak across either.
+_current_sheet_id: contextvars.ContextVar[str] = contextvars.ContextVar("current_sheet_id")
+
+
+def set_current_sheet(sheet_id: str) -> None:
+    _current_sheet_id.set(sheet_id)
+
+
+def get_current_sheet_id() -> str:
+    try:
+        return _current_sheet_id.get()
+    except LookupError:
+        raise RuntimeError(
+            "No current sheet set — call sheets_client.set_current_sheet(sheet_id) "
+            "before making any Sheets call. This means a request/update reached "
+            "Sheets-touching code without going through the web app's auth gate "
+            "or the bot's @restricted decorator first."
+        ) from None
 
 
 @_retryable
@@ -132,10 +161,10 @@ def get_client():
 
 @_retryable
 def get_spreadsheet():
-    global _spreadsheet
-    if _spreadsheet is None:
-        _spreadsheet = get_client().open_by_key(settings.GOOGLE_SHEET_ID)
-    return _spreadsheet
+    sheet_id = get_current_sheet_id()
+    if sheet_id not in _spreadsheets:
+        _spreadsheets[sheet_id] = get_client().open_by_key(sheet_id)
+    return _spreadsheets[sheet_id]
 
 
 @_retryable
@@ -240,22 +269,21 @@ class SheetTab:
 # ---------------------------------------------------------------------------
 
 def get_categories(active_only: bool = False, use_cache: bool = True) -> list[dict]:
-    global _category_cache, _category_cache_at
+    sheet_id = get_current_sheet_id()
     now = time.time()
-    if use_cache and _category_cache is not None and (now - _category_cache_at) < CATEGORY_CACHE_TTL_SECONDS:
-        records = _category_cache
+    cached = _category_cache.get(sheet_id)
+    if use_cache and cached is not None and (now - cached[1]) < CATEGORY_CACHE_TTL_SECONDS:
+        records = cached[0]
     else:
         records = SheetTab(TAB_CATEGORIES).all_records()
-        _category_cache = records
-        _category_cache_at = now
+        _category_cache[sheet_id] = (records, now)
     if active_only:
         records = [r for r in records if str(r.get("Active", "")).strip().upper() == "TRUE"]
     return records
 
 
 def invalidate_category_cache():
-    global _category_cache
-    _category_cache = None
+    _category_cache.pop(get_current_sheet_id(), None)
 
 
 def _next_sort_order() -> int:

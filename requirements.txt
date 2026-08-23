@@ -1,6 +1,7 @@
 python-telegram-bot[job-queue]>=20,<21
 gspread>=6
 google-auth>=2
+google-auth-oauthlib>=1
 anthropic>=0.40
 flask>=3
 pandas>=2

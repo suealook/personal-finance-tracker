@@ -1,6 +1,7 @@
 .env
 data/credentials/
 data/reports_cache/
+data/users.json
 data/heartbeat_*.txt
 data/service_account.json
 data/claude_usage.json

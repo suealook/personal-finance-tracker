@@ -72,12 +72,33 @@ nano .env
 Fill in the same values as local dev, plus:
 ```
 WEB_BIND_HOST=127.0.0.1
-DASHBOARD_PASSWORD=<pick a real password>
+GOOGLE_OAUTH_CLIENT_ID=<from the OAuth client you create below>
+GOOGLE_OAUTH_CLIENT_SECRET=<from the OAuth client you create below>
 ```
 (`WEB_BIND_HOST` stays loopback-only — Caddy is what's actually reachable
-from the internet, forwarding to Flask internally. `DASHBOARD_PASSWORD` is
-required as soon as anything's reachable beyond loopback, and Caddy makes
-that true here.)
+from the internet, forwarding to Flask internally on `127.0.0.1:5000` per
+`deploy/Caddyfile`. Set `GOOGLE_OAUTH_CLIENT_ID`/`_SECRET` regardless of
+what the app's own startup check would otherwise require — that check only
+fires when Flask itself binds beyond loopback, which isn't this topology,
+so it can't be relied on here: Caddy makes this reachable from the public
+internet even though Flask's own bind address is loopback-only.)
+
+**Before creating the OAuth client**: Google's console rejects a bare IP
+address as an authorized redirect URI, so you need a real domain first — a
+free one from [DuckDNS](https://www.duckdns.org/) pointed at this VM's
+external IP works fine, and you don't need to touch the TLS cert to get one
+(that's the separate, optional upgrade in the last section below). Once you
+have a domain: GCP Console → APIs & Services → Credentials → Create
+Credentials → OAuth client ID → Web application → add authorized redirect
+URI `https://<your-domain>/auth/google/callback`. See
+[SETUP.md](SETUP.md)'s Google Sign-In section for the consent-screen step if
+you haven't created an OAuth client in this project before.
+
+Create `data/users.json` — who's allowed to sign into the dashboard and use
+the bot (see [SETUP.md](SETUP.md)'s config step for the exact format).
+Today's single user: their existing `GOOGLE_SHEET_ID` and
+`TELEGRAM_ALLOWED_USER_ID` values become `sheet_id`/`telegram_user_id` in
+the one entry, plus whichever Google account email they'll sign in with.
 
 Initialize the sheet's tabs once, if you haven't already:
 ```bash
@@ -133,7 +154,20 @@ https://<your-vm-external-ip>
 First visit on each device: you'll get a "connection isn't private" warning
 — expected for a self-signed certificate. Click through it (Chrome:
 "Advanced" → "Proceed"; Safari: "Show Details" → "visit this website"), then
-sign in with the `dashboard_password`/`dashboard_username` you set in `.env`.
+sign in with Google — only the email(s) listed in `data/users.json` can get in.
+
+## Adding another user
+
+1. They create their own Google Sheet (sheets.new) and share it with the
+   service account's email (Editor) — same step as [SETUP.md](SETUP.md)'s
+   Google Sheet section, `client_email` in `data/credentials/service_account.json`.
+2. On the VM: `venv/bin/python scripts/init_sheet.py <their-sheet-id>` to
+   create the 5 tabs in their sheet.
+3. Add a new entry to `data/users.json` — their Google login email, their
+   sheet's id, and their numeric Telegram user ID (from @userinfobot).
+4. `sudo systemctl restart finance-web finance-bot` — both processes load
+   `data/users.json` at startup, so this is required for the new entry to
+   take effect.
 
 ## Updating later
 
