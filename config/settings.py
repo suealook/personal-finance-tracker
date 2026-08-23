@@ -34,6 +34,13 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
 WEB_PORT = int(os.environ.get("WEB_PORT", "5000"))
 WEB_BIND_HOST = os.environ.get("WEB_BIND_HOST", "127.0.0.1")
 
+# Explicit opt-in only, never inferred from WEB_BIND_HOST — a reverse proxy
+# (Caddy) can sit in front of a loopback-bound Flask and forward everything,
+# debugger included, straight to the internet. Binding to 127.0.0.1 no
+# longer reliably means "not reachable externally" once that's the
+# deployment shape, so this has to be its own explicit flag, off by default.
+DEBUG = os.environ.get("FLASK_DEBUG", "").strip().lower() in ("1", "true", "yes")
+
 # Required whenever WEB_BIND_HOST isn't loopback-only (enforced, fail-closed,
 # in web/app.py specifically — not here, since this module is also imported
 # by the bot process, which has no need for this password). Optional for
