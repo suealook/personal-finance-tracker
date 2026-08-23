@@ -235,17 +235,25 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = settings.FLASK_SECRET_KEY
     app.permanent_session_lifetime = timedelta(days=3)
-    if not_loopback:
-        # Always true once this is behind Caddy's HTTPS per DEPLOY.md — guarded
-        # so a developer running the plain-HTTP dev server locally doesn't get
-        # their session cookie silently dropped by the browser.
+
+    # Caddy proxies to this Flask process over plain HTTP on loopback (see
+    # deploy/Caddyfile) and sets X-Forwarded-Proto/Host (its default
+    # reverse_proxy behavior) — trust exactly one hop of those so
+    # url_for(_external=True) reports https and the real host instead of
+    # Flask's own view of the connection. Deliberately NOT conditioned on
+    # WEB_BIND_HOST: per this deployment's design, Flask stays loopback-bound
+    # even in production (Caddy is what's actually reachable from the
+    # internet), so a not_loopback check here would never fire — the same
+    # trap FLASK_DEBUG above already had to be rewritten to avoid. Always
+    # applying this is safe: without an actual proxy in front (local dev),
+    # the X-Forwarded-* headers simply aren't present and it's a no-op.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+    # Same reasoning — tied to whether Google Sign-In is configured (the
+    # real "this is a live deployment, not local dev" signal) rather than
+    # bind host, which stays loopback here even in production.
+    if settings.GOOGLE_OAUTH_CLIENT_ID:
         app.config["SESSION_COOKIE_SECURE"] = True
-        # Caddy proxies to this Flask process over plain HTTP internally and
-        # sets X-Forwarded-Proto/Host (its default reverse_proxy behavior) —
-        # trust exactly one hop of those so url_for(_external=True) reports
-        # https and the real host instead of Flask's own view of the
-        # connection, which the OAuth redirect URI must match exactly.
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
     # Cache-busting for static assets: without this, style.css is served from a
     # fixed URL forever, so a browser that already cached an old copy has no
