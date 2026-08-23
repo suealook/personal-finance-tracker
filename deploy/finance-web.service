@@ -4,9 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/personal-finance
-ExecStart=/home/ubuntu/personal-finance/venv/bin/python scripts/run_web.py
+# Replace CHANGE_ME below with your actual login user (run `whoami` on the
+# VM to check) and adjust the paths if the repo isn't cloned to your home
+# directory as ~/personal-finance.
+User=CHANGE_ME
+WorkingDirectory=/home/CHANGE_ME/personal-finance
+ExecStart=/home/CHANGE_ME/personal-finance/venv/bin/python scripts/run_web.py
 Restart=on-failure
 RestartSec=5
 

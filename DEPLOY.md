@@ -1,40 +1,43 @@
-# Deploying to Oracle Cloud (Always Free)
+# Deploying to Google Cloud (Always Free e2-micro)
 
 Two systemd services (bot + web) behind a Caddy reverse proxy that terminates
-HTTPS, on an Oracle Cloud "Always Free" VM. No domain required — Caddy
-self-signs a certificate for the VM's IP, same one-time "trust this
-certificate" step per device as any self-signed setup. If you get a free
-domain later (e.g. from [DuckDNS](https://www.duckdns.org/)), see the note
-at the bottom to upgrade to a real, browser-trusted certificate for free.
+HTTPS, on a GCP "Always Free" VM. No domain required — Caddy self-signs a
+certificate for the VM's IP, same one-time "trust this certificate" step per
+device as any self-signed setup. If you get a free domain later (e.g. from
+[DuckDNS](https://www.duckdns.org/)), see the note at the bottom to upgrade
+to a real, browser-trusted certificate for free.
 
 ## 1. Create the VM
 
-1. Sign up at [cloud.oracle.com](https://www.oracle.com/cloud/free/) (free tier, no charge unless you explicitly upgrade).
-2. **Compute → Instances → Create Instance.**
-3. **Image and shape** → Edit → choose **Ampere (ARM) → VM.Standard.A1.Flex**, 2-4 OCPUs / 12-24 GB RAM (still within the Always Free allowance, comfortably more than this app needs). Image: **Ubuntu 24.04** (or 22.04).
-4. **Networking**: use the default VCN, and tick **"Assign a public IPv4 address."**
-5. **Add SSH keys**: let Oracle generate a key pair and download the private key (or paste your own public key if you already have one).
-6. Create the instance. Note its **public IP address** once it's running.
+1. Sign up at [console.cloud.google.com](https://console.cloud.google.com/) and create a project. GCP requires a credit card on file even for the free tier — you won't be charged unless you exceed the free allowance or explicitly upgrade.
+2. **Compute Engine → VM instances → Create Instance.**
+3. **Name**: anything, e.g. `personal-finance`.
+4. **Region**: must be one of `us-west1`, `us-central1`, or `us-east1` — these are the only regions the Always Free e2-micro applies to. Pick whichever is closest to you.
+5. **Machine type**: `e2-micro` (2 shared vCPU, 1 GB RAM) — the free-tier shape. This app is lightweight (mostly waiting on network calls), so this is plenty.
+6. **Boot disk** → Change → **Ubuntu 24.04 LTS**, standard persistent disk, 30 GB or less (30 GB-months/month is the free allowance).
+7. Leave the rest at defaults and **Create**. Note the VM's **external IP** once it's running.
 
-## 2. Open the firewall (two layers — both need it)
+## 2. Open the firewall
 
-Oracle VMs have **two** independent firewalls; a port closed on either one blocks traffic.
+**VPC firewall rule** (GCP's equivalent of a security group):
+VPC Network → Firewall → **Create Firewall Rule**:
+- Name: `allow-https`
+- Targets: All instances in the network (or tag your VM and target by tag)
+- Source IPv4 range: `0.0.0.0/0`
+- Protocols/ports: tcp, port `443`
 
-**a) Cloud-level (Security List / Network Security Group):**
-Networking → Virtual Cloud Networks → your VCN → your subnet → Security Lists → Default Security List → **Add Ingress Rules**:
-- Source CIDR `0.0.0.0/0`, IP Protocol TCP, Destination Port `443` (HTTPS)
-- (Port 22/SSH is already open by default)
-
-**b) OS-level firewall (Ubuntu's `iptables`, pre-configured restrictively on Oracle's images):**
-```bash
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
-sudo netfilter-persistent save
-```
+SSH (port 22) is open to GCP's Identity-Aware Proxy range by default — the
+**SSH button in the Cloud Console** (browser-based, no key setup needed) just
+works out of the box. GCP's stock Ubuntu image has no extra OS-level firewall
+blocking things by default, unlike some other providers — this one rule is
+normally all you need.
 
 ## 3. Connect and install dependencies
 
+Click the **SSH** button next to your VM in the Cloud Console (opens a
+browser-based terminal, no key file to manage), then:
+
 ```bash
-ssh -i /path/to/downloaded/key.pem ubuntu@<your-vm-ip>
 sudo apt update && sudo apt install -y python3 python3-venv python3-pip git curl
 ```
 
@@ -56,9 +59,11 @@ python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 ```
 
-Copy your Google service account key to `data/credentials/service_account.json`
-(e.g. `scp` it from your own machine), and set up `.env`:
+Copy your Google service account key to `data/credentials/service_account.json`.
+The Cloud Console's SSH window has an upload button (gear icon → **Upload
+file**) — easiest way to get it onto the VM without dealing with `scp` keys.
 
+Set up `.env`:
 ```bash
 cp .env.example .env
 nano .env
@@ -81,17 +86,19 @@ venv/bin/python scripts/init_sheet.py
 
 ## 6. systemd services
 
-Copy the two unit files from `deploy/` into place:
+First, replace every `CHANGE_ME` in both files with your actual login
+username (check with `whoami` — on GCP this is usually your Google
+account's local username, not `ubuntu`) and confirm the repo path matches
+where you cloned it in step 5:
+
 ```bash
+cd ~/personal-finance
+sed -i "s/CHANGE_ME/$(whoami)/g" deploy/finance-web.service deploy/finance-bot.service
 sudo cp deploy/finance-web.service deploy/finance-bot.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now finance-web finance-bot
 sudo systemctl status finance-web finance-bot
 ```
-
-Both files assume the repo lives at `/home/ubuntu/personal-finance` and run as
-the `ubuntu` user — edit `User=`/`WorkingDirectory=`/`ExecStart=` in both
-files first if yours differs.
 
 ## 7. Caddy (HTTPS reverse proxy)
 
@@ -103,7 +110,7 @@ sudo systemctl restart caddy
 ## 8. Visit it
 
 ```
-https://<your-vm-ip>
+https://<your-vm-external-ip>
 ```
 
 First visit on each device: you'll get a "connection isn't private" warning
@@ -131,7 +138,7 @@ sudo journalctl -u caddy -f           # reverse proxy, live
 ## Upgrading to a real (browser-trusted) certificate later
 
 If you get a free domain (e.g. `yourname.duckdns.org`) and point its DNS A
-record at the VM's public IP, replace `deploy/Caddyfile`'s `:443` block with:
+record at the VM's external IP, replace `deploy/Caddyfile`'s `:443` block with:
 
 ```
 yourname.duckdns.org {
