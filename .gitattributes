@@ -1,0 +1,5 @@
+# Deployment scripts run on Linux regardless of what OS they're edited on —
+# force LF line endings so a Windows checkout's autocrlf setting can't turn
+# a shell script into something bash refuses to run.
+*.sh text eol=lf
+deploy/* text eol=lf

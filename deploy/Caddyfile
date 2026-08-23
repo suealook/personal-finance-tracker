@@ -1,16 +1,23 @@
 # Terminates HTTPS on the standard port and reverse-proxies to the Flask
 # app, which listens on an internal-only port (127.0.0.1:5000, not exposed
-# outside the VM). `tls internal` makes Caddy generate and manage its own
-# local CA + certificate automatically, since there's no domain to get a
-# real Let's Encrypt certificate for yet — every device needs a one-time
-# "trust this certificate" step on first visit. See DEPLOY.md's last
-# section for upgrading to a real, browser-trusted certificate once you
-# have a domain (even a free one).
+# outside the VM).
+#
+# Uses a manually-generated certificate (see generate-cert.sh), not Caddy's
+# own `tls internal` — that directive tries to install its generated root CA
+# into the VM's system trust store, which the unprivileged caddy service
+# account can't do, and per Caddy's own docs that failure has no supported
+# workaround. In testing it left the certificate-issuing pipeline broken
+# (every TLS handshake failed with a generic internal-error alert), so this
+# sidesteps that subsystem entirely. Every device still needs the same
+# one-time "trust this certificate" step on first visit — see DEPLOY.md's
+# last section for upgrading to a real, browser-trusted Let's Encrypt
+# certificate once you have a domain (even a free one), which doesn't have
+# this problem since it doesn't touch the local trust store at all.
 {
 	admin off
 }
 
 :443 {
-	tls internal
+	tls /etc/caddy/tls/cert.pem /etc/caddy/tls/key.pem
 	reverse_proxy 127.0.0.1:5000
 }

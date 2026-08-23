@@ -102,10 +102,27 @@ sudo systemctl status finance-web finance-bot
 
 ## 7. Caddy (HTTPS reverse proxy)
 
+Generate a certificate first — this uses `openssl` directly rather than
+Caddy's own `tls internal`, which tries to install its root CA into the
+VM's system trust store and has no supported fallback when that fails for
+an unprivileged service account (it does, by design). In testing that
+failure left the internal CA unable to issue a working certificate at all:
+
+```bash
+chmod +x deploy/generate-cert.sh
+./deploy/generate-cert.sh
+```
+
+With no argument it auto-detects the VM's external IP via GCP's metadata
+server. Then:
+
 ```bash
 sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
 sudo systemctl restart caddy
+curl -k -s -o /dev/null -w "status: %{http_code}\n" https://127.0.0.1:443/login
 ```
+
+That last line should print `status: 200` before moving on.
 
 ## 8. Visit it
 
