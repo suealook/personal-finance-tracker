@@ -24,39 +24,27 @@ Fill in the add-on's Configuration tab:
 | `google_service_account_json` | Paste the **entire contents** of your service account's JSON key file |
 | `anthropic_api_key` | From console.anthropic.com |
 | `claude_model` | Defaults to `claude-sonnet-5` |
-| `dashboard_username` | Optional. Leave blank to sign in with just the password below (any username accepted); set it to require both. |
-| `dashboard_password` | **Required.** The dashboard binds to all network interfaces under Home Assistant (reachable from your whole LAN, not just this device), so the add-on refuses to start without one. You'll sign in with a login page the first time you visit. |
+| `dashboard_password` | **Required.** The dashboard binds to all network interfaces under Home Assistant (reachable from your whole LAN, not just this device), so the add-on refuses to start without one. Pick any password — the browser will prompt for it (any username, that password) the first time you visit. |
 
 Then start the add-on. On first start, run `python scripts/init_sheet.py`-equivalent
 setup once (see the main SETUP.md) if the Sheet's tabs haven't been created yet.
 
 ## Using it
 
-- The web dashboard is at `https://<your-ha-ip>:5000` — **note the `https`**.
-  The add-on serves real HTTPS via a bundled [Caddy](https://caddyserver.com)
-  reverse proxy with a self-signed certificate it generates and manages
-  automatically, so your browser will show a one-time "connection isn't
-  private" warning the first time you visit from each device — this is
-  expected for a self-signed cert; proceed/accept it (in Safari: "Show
-  Details" → "visit this website"). After that, log in with the
-  `dashboard_username`/`dashboard_password` you set above.
+- The web dashboard is at `http://<your-ha-ip>:5000` — your browser will prompt
+  for the `dashboard_password` you set above (Basic Auth; any username works).
 - The `/update` page in the dashboard shows live status for the web service, the
   Telegram bot (via a heartbeat, refreshed every 30s), the Google Sheets
   connection, and a running Claude API cost estimate (in THB), plus a one-click
   Update button once a new version is published to this add-on's repository.
-- Logs for the bot, web, and Caddy processes all appear in this add-on's
-  **Log** tab, each line prefixed with which one it's from.
-- Forgot your password? Reset `dashboard_password` the same way you set it —
-  this Configuration tab. There's no separate password-reset flow.
+- Logs for both the bot and web processes appear in this add-on's **Log** tab.
 
 ## Security notes
 
-- The dashboard requires signing in (`dashboard_password`, with an optional
-  `dashboard_username`) and rejects cross-origin form submissions. It's
-  designed for LAN-only access via Home Assistant — don't port-forward this
-  add-on's port to the public internet.
-- Login attempts are rate-limited (5 failed attempts locks out further tries
-  for 30 seconds from that source).
+- The dashboard requires `dashboard_password` (HTTP Basic Auth) and rejects
+  cross-origin form submissions — but Basic Auth credentials are cached by the
+  browser per-origin, so still don't port-forward this add-on's port to the
+  public internet. It's designed for LAN-only access via Home Assistant.
 - Every transaction/category text field is written to Google Sheets with
   spreadsheet-formula injection neutralized (a value starting with `=`, `+`,
   `-`, or `@` is stored as literal text, never evaluated as a formula).

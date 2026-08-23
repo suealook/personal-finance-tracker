@@ -15,11 +15,4 @@ if __name__ == "__main__":
     # Assistant — can't accidentally also turn on debug mode and expose an
     # arbitrary-code-execution console to the whole network.
     debug = not settings.RUNNING_UNDER_HOME_ASSISTANT and settings.WEB_BIND_HOST in ("127.0.0.1", "localhost")
-
-    # Plain HTTP, always loopback-only under Home Assistant (the Dockerfile
-    # sets WEB_BIND_HOST=127.0.0.1 and WEB_PORT=5001 there) — Caddy is the
-    # only thing exposed to the LAN, terminating HTTPS and reverse-proxying
-    # here. Flask's own dev-server TLS support (ssl_context=) turned out to
-    # be unreliable under real connection patterns; Caddy is a proper,
-    # battle-tested TLS terminator instead (see CHANGELOG).
-    app.run(host=settings.WEB_BIND_HOST, port=settings.WEB_PORT, debug=debug, use_reloader=False, threaded=True)
+    app.run(host=settings.WEB_BIND_HOST, port=settings.WEB_PORT, debug=debug, use_reloader=False)

@@ -39,22 +39,16 @@ BOT_HEARTBEAT_STALE_SECONDS = 180     # < this: bot may be restarting/hung; >= t
 
 _last_llm_call_at: dict[str, float] = {}
 _login_failures: dict[str, list[float]] = {}
-# threaded=True (needed for HTTPS page loads with several parallel
-# connections) means these two dicts can now genuinely be touched by more
-# than one request at once — a lock keeps each read-then-write check atomic
-# instead of two overlapping requests both reading a cooldown as expired.
-_rate_limit_lock = threading.Lock()
 
 
 def _llm_rate_limited(key: str) -> bool:
     """True if this key's last call was too recent — used to blunt cost-abuse
     loops against the two routes that trigger real Anthropic API calls."""
-    with _rate_limit_lock:
-        now = time.time()
-        if now - _last_llm_call_at.get(key, 0.0) < LLM_CALL_COOLDOWN_SECONDS:
-            return True
-        _last_llm_call_at[key] = now
-        return False
+    now = time.time()
+    if now - _last_llm_call_at.get(key, 0.0) < LLM_CALL_COOLDOWN_SECONDS:
+        return True
+    _last_llm_call_at[key] = now
+    return False
 
 
 def _login_locked_out(source: str) -> bool:
@@ -62,16 +56,14 @@ def _login_locked_out(source: str) -> bool:
     LOGIN_MAX_ATTEMPTS times within LOGIN_LOCKOUT_SECONDS — blunts password
     brute-forcing now that login goes through a real form instead of the
     browser's own Basic Auth prompt."""
-    with _rate_limit_lock:
-        now = time.time()
-        recent = [t for t in _login_failures.get(source, []) if now - t < LOGIN_LOCKOUT_SECONDS]
-        _login_failures[source] = recent
-        return len(recent) >= LOGIN_MAX_ATTEMPTS
+    now = time.time()
+    recent = [t for t in _login_failures.get(source, []) if now - t < LOGIN_LOCKOUT_SECONDS]
+    _login_failures[source] = recent
+    return len(recent) >= LOGIN_MAX_ATTEMPTS
 
 
 def _record_login_failure(source: str):
-    with _rate_limit_lock:
-        _login_failures.setdefault(source, []).append(time.time())
+    _login_failures.setdefault(source, []).append(time.time())
 
 
 def _bot_status() -> dict:
