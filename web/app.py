@@ -29,6 +29,13 @@ SPARKLINE_MONTHS = 6
 MAX_GROUP_SLOTS = 6  # + one folded "Other" bucket = 7 visual segments max
 LLM_CALL_COOLDOWN_SECONDS = 10  # guards /api/insights and /reports/generate against cost-abuse loops
 
+# Every state-changing route in this app is POST (see the @app.route table)
+# except this one -- a GET that triggers a real, billed Claude API call. The
+# CSRF check below always covers non-GET/HEAD methods; this is what it
+# additionally covers among GETs, by name, instead of blanket-covering every
+# GET route including plain reads.
+CSRF_PROTECTED_GET_ENDPOINTS = {"api_insights"}
+
 ALLOWED_REPORT_TAGS = [
     "p", "br", "strong", "em", "ul", "ol", "li", "h1", "h2", "h3", "h4",
     "blockquote", "code", "pre", "a", "table", "thead", "tbody", "tr", "th", "td",
@@ -295,28 +302,38 @@ def create_app() -> Flask:
 
     @app.before_request
     def _security_gate():
-        # CSRF: reject cross-origin requests on every method, not just POST —
-        # GET routes can have side effects too (e.g. /api/insights triggers a
-        # real, billed Claude API call). Checked before auth, and regardless of
-        # whether a password is configured, since a forged request from
-        # another site is a risk independent of authentication. Comparing
-        # origin_host != request_host directly (not "if origin_host and...")
-        # means a present-but-unparseable Origin — notably the literal string
-        # "null" sent by sandboxed iframes and other opaque-origin requests,
-        # which urlparse turns into an empty netloc — is rejected as a
-        # mismatch instead of silently passing through. A request with
-        # neither header at all (plain navigation, most non-browser clients)
-        # is still let through unchecked, same as before. Both sides go
+        # CSRF: reject cross-origin requests on every state-changing method
+        # (POST/PUT/DELETE/PATCH — every one of them in this app), plus the
+        # one named GET route that isn't safe (CSRF_PROTECTED_GET_ENDPOINTS
+        # above). Deliberately NOT every GET: a plain read (the dashboard,
+        # /budgets, /categories, ...) has nothing for a forged cross-site
+        # request to gain by hitting it, and blanket-checking every GET is
+        # what caused a real false-positive here — a browser tags the Origin
+        # header as the literal string "null" on a request that's the tail
+        # end of a redirect chain that crossed an origin boundary anywhere
+        # earlier in that chain (our site -> Google -> our own callback ->
+        # our own redirect to "/"), per the Fetch spec's "tainted origin"
+        # handling, and that's indistinguishable from the actual attack this
+        # check exists for (a sandboxed iframe, which also sends "null").
+        # Scoping to where a forged request could actually do something
+        # makes that ambiguity irrelevant instead of trying to resolve it.
+        # Comparing origin_host != request_host directly (not "if
+        # origin_host and...") means a present-but-unparseable Origin is
+        # still rejected as a mismatch on the routes this does apply to,
+        # rather than silently passing through. A request with neither
+        # header at all (plain navigation, most non-browser clients) is
+        # still let through unchecked, same as before. Both sides go
         # through _authority() so a default-port formatting difference
         # between the browser's Origin and this app's (proxied) request.host
-        # can't produce a false-positive rejection — see that helper's
-        # docstring for why that's a real, not hypothetical, case here.
+        # can't produce a false-positive either — see that helper's
+        # docstring.
+        needs_csrf_check = request.method not in ("GET", "HEAD") or request.endpoint in CSRF_PROTECTED_GET_ENDPOINTS
         origin = request.headers.get("Origin") or request.headers.get("Referer")
         # A real Google redirect back to /auth/google/callback arrives with an
         # external Referer (accounts.google.com) — that's expected there, and
         # that route's own defense against a forged callback is the OAuth
         # `state` parameter it checks itself, not this generic same-site check.
-        if origin and request.endpoint != "auth_google_callback":
+        if needs_csrf_check and origin and request.endpoint != "auth_google_callback":
             parsed_origin = urlparse(origin)
             origin_host = _authority(parsed_origin.netloc, parsed_origin.scheme)
             request_host = _authority(request.host, request.scheme)
