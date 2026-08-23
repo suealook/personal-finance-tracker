@@ -13,6 +13,7 @@ import time
 from typing import Callable, Optional
 
 import gspread
+import requests
 from google.oauth2.service_account import Credentials
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -74,7 +75,15 @@ HEADERS = {
 }
 
 _retry = retry(
-    retry=retry_if_exception_type(gspread.exceptions.APIError),
+    # gspread.exceptions.APIError covers Google responding with an error
+    # (rate limit, 5xx, etc). requests.exceptions.RequestException covers
+    # not reaching Google at all (DNS failure, connection refused, timeout)
+    # -- gspread's HTTPClient is built directly on
+    # google.auth.transport.requests.AuthorizedSession, which raises these
+    # for a transport-level failure rather than an APIError, so without
+    # this a single network blip would fail with zero retries instead of
+    # backing off like every other transient failure does.
+    retry=retry_if_exception_type((gspread.exceptions.APIError, requests.exceptions.RequestException)),
     wait=wait_exponential(multiplier=1, min=1, max=20),
     stop=stop_after_attempt(5),
     reraise=True,

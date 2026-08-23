@@ -222,11 +222,16 @@ async def on_undo_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     transaction_id = query.data.split(":", 1)[1]
-    txn = sheets_client.get_transaction_by_id(transaction_id)
-    if not txn or txn.get("Status") != "active":
-        await query.edit_message_text("Already undone (or not found).")
+    try:
+        txn = sheets_client.get_transaction_by_id(transaction_id)
+        if not txn or txn.get("Status") != "active":
+            await query.edit_message_text("Already undone (or not found).")
+            return
+        sheets_client.undo_transaction(txn["_row"])
+    except Exception:
+        logger.exception("Failed to undo transaction_id=%s", transaction_id)
+        await query.edit_message_text("Couldn't undo that one — please try again.")
         return
-    sheets_client.undo_transaction(txn["_row"])
     await query.edit_message_text(f"Undone: {txn['Amount']} - {txn['Category']} on {txn['Date']}.")
 
 
