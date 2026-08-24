@@ -1160,3 +1160,43 @@ legend {
   color: var(--status-critical);
   font-size: 0.85rem;
 }
+
+/* ---- Warp jump (clicking Sign in) ----------------------------------------
+   88mph departure: star-streak canvas kicks in, the grid rushes, the hero
+   flies past the camera, then a white flash right as the browser leaves for
+   Google. Driven by login.html's script adding .warping — which it only does
+   when JS is on and prefers-reduced-motion is off, so both fallbacks submit
+   the form instantly with no effect. */
+#warp-fx {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+}
+.warping #warp-fx { opacity: 1; }
+
+.warp-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+.warping .warp-flash { animation: warp-flash 0.24s ease-in 0.62s forwards; }
+@keyframes warp-flash { to { opacity: 1; } }
+
+.warping .bttf-hero {
+  transition: transform 0.8s cubic-bezier(0.5, 0, 0.9, 0.4), opacity 0.8s ease-in, filter 0.8s ease-in;
+  transform: scale(2.1);
+  opacity: 0;
+  filter: blur(6px);
+}
+.warping .login-card {
+  transition: transform 0.6s cubic-bezier(0.5, 0, 0.9, 0.4), opacity 0.6s ease-in;
+  transform: scale(0.88);
+  opacity: 0;
+}
+.warping .bttf-grid { animation-duration: 0.4s; }
+.warping .bttf-stars { opacity: 0; transition: opacity 0.4s ease-in; }

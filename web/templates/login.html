@@ -12,9 +12,11 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
 </head>
 <body>
-  <div class="login-wrap">
+  <div class="login-wrap" id="login-wrap">
     <div class="bttf-stars" aria-hidden="true"></div>
     <div class="bttf-grid" aria-hidden="true"></div>
+    <canvas id="warp-fx" aria-hidden="true"></canvas>
+    <div class="warp-flash" aria-hidden="true"></div>
 
     <div class="bttf-hero">
       <div class="bttf-eyebrow">Welcome to</div>
@@ -52,5 +54,71 @@
       </button>
     </form>
   </div>
+
+  <script>
+  (function () {
+    // Warp jump on sign-in: intercept the submit, play ~0.88s of star-streak
+    // + flash, then continue the real POST to Google. Skipped entirely (form
+    // submits immediately) under prefers-reduced-motion; with JS off the
+    // listener never attaches and the form just submits natively.
+    var form = document.querySelector('.login-card');
+    var wrap = document.getElementById('login-wrap');
+    var canvas = document.getElementById('warp-fx');
+    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var WARP_MS = 880; // it's a Back to the Future site — of course it's 88.
+    var warping = false;
+
+    function startStreaks() {
+      var dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      canvas.width = wrap.clientWidth * dpr;
+      canvas.height = wrap.clientHeight * dpr;
+      var ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      var w = wrap.clientWidth;
+      var h = wrap.clientHeight;
+      var cx = w / 2;
+      var cy = h * 0.42; // radiate from the hero, not dead center
+      var maxR = Math.hypot(w, h);
+
+      var stars = [];
+      for (var i = 0; i < 150; i++) {
+        stars.push({
+          angle: Math.random() * Math.PI * 2,
+          dist: 0.04 + Math.random() * 0.5,
+          hue: Math.random() < 0.18 ? '255, 190, 90' : (Math.random() < 0.5 ? '155, 226, 255' : '255, 255, 255'),
+        });
+      }
+
+      var t0 = performance.now();
+      (function frame(now) {
+        var t = Math.min((now - t0) / WARP_MS, 1);
+        var speed = t * t * 0.55; // accelerate — slow start, violent finish
+        ctx.clearRect(0, 0, w, h);
+        ctx.lineCap = 'round';
+        for (var i = 0; i < stars.length; i++) {
+          var s = stars[i];
+          var r1 = s.dist * maxR * (0.15 + speed);
+          var r2 = s.dist * maxR * (0.15 + speed * 1.6) + 2;
+          ctx.strokeStyle = 'rgba(' + s.hue + ',' + Math.min(0.85, 0.15 + t) + ')';
+          ctx.lineWidth = 1 + t * 1.6;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(s.angle) * r1, cy + Math.sin(s.angle) * r1);
+          ctx.lineTo(cx + Math.cos(s.angle) * r2, cy + Math.sin(s.angle) * r2);
+          ctx.stroke();
+        }
+        if (t < 1) requestAnimationFrame(frame);
+      })(t0);
+    }
+
+    form.addEventListener('submit', function (e) {
+      if (reduceMotion || warping) return; // let it submit normally
+      e.preventDefault();
+      warping = true;
+      wrap.classList.add('warping');
+      startStreaks();
+      setTimeout(function () { form.submit(); }, WARP_MS);
+    });
+  })();
+  </script>
 </body>
 </html>
