@@ -25,6 +25,7 @@
     <span class="status-badge {{ nav_bot_status.state }}" title="{{ nav_bot_status.detail }}">{{ bot_labels.get(nav_bot_status.state, 'Bot') }}</span>
     <div class="nav-links">
       <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
+      <a href="{{ url_for('household_page') }}" class="{{ 'active' if request.endpoint == 'household_page' }}">Household</a>
       <a href="{{ url_for('budgets') }}" class="{{ 'active' if request.endpoint == 'budgets' }}">Budgets</a>
       <a href="{{ url_for('categories_page') }}" class="{{ 'active' if request.endpoint == 'categories_page' }}">Categories</a>
       <a href="{{ url_for('reports_page') }}" class="{{ 'active' if request.endpoint in ('reports_page', 'report_detail') }}">Reports</a>

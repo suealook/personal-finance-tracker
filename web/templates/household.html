@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Household{% endblock %}
+{% block content %}
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem;">
+    <h1 style="margin: 0;">Household</h1>
+    <form method="get" class="inline-form" id="month-picker-form">
+      <label>Month: <input type="month" name="month" value="{{ month }}" onchange="this.form.submit()"></label>
+    </form>
+  </div>
+
+  {% if not rows %}
+  <div class="card">
+    <p class="muted">
+      Nothing's shared yet. On the Categories page, check "Shared" on the things you split as a
+      household — rent, groceries, utilities — and they'll show up here combined, for both of you.
+    </p>
+    <a href="{{ url_for('categories_page') }}" class="btn-ghost">Go to Categories</a>
+  </div>
+  {% else %}
+
+  <div class="stat-grid">
+    <div class="card stat-tile">
+      <span class="stat-icon good">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+      </span>
+      <div class="stat-label">Household Income</div>
+      <div class="stat-value num">{{ "%.2f"|format(income_total) }}</div>
+      <div class="stat-delta neutral">
+        {% for label in person_labels %}{{ label }}: {{ "%.2f"|format(income_by_person[label]) }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+      </div>
+    </div>
+
+    <div class="card stat-tile">
+      <span class="stat-icon bad">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+      </span>
+      <div class="stat-label">Household Spend</div>
+      <div class="stat-value num">{{ "%.2f"|format(spend_total) }}</div>
+      <div class="stat-delta neutral">
+        {% for label in person_labels %}{{ label }}: {{ "%.2f"|format(spend_by_person[label]) }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+      </div>
+    </div>
+
+    <div class="card stat-tile">
+      <span class="stat-icon accent">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"></path><path d="M2 9h13.5a2 2 0 0 1 0 4H15"></path></svg>
+      </span>
+      <div class="stat-label">Household Net</div>
+      <div class="stat-value num {{ 'good' if net >= 0 else 'bad' }}">{{ "%+.2f"|format(net) }}</div>
+      <div class="stat-delta neutral">Income minus spending</div>
+    </div>
+
+    <div class="card stat-tile">
+      <span class="stat-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+      </span>
+      <div class="stat-label">Budget Utilization</div>
+      {% if budget_used_pct is not none %}
+      <div class="stat-value num">{{ "%.0f"|format(budget_used_pct) }}%</div>
+      <div class="meter-track">
+        <div class="meter-fill {{ 'critical' if budget_used_pct > 100 else ('warning' if budget_used_pct > 80 else '') }}"
+             style="width: {{ [budget_used_pct, 100]|min }}%"></div>
+      </div>
+      <div class="stat-delta neutral">{{ "%.2f"|format(total_actual) }} of {{ "%.2f"|format(total_planned) }} planned</div>
+      {% else %}
+      <div class="stat-value">&mdash;</div>
+      <div class="stat-delta neutral">No shared budget set for {{ month }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Shared categories</h2>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>Household Category</th><th>Planned</th><th>Actual</th><th>Variance</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{{ 'over' if r.variance > 0 else 'under' }}">
+          <td>
+            {{ r.household_category }}
+            {% if r.single_contributor and person_labels|length > 1 %}
+            {% set contributor = (r.source_categories.keys()|list)[0] %}
+            <div class="muted" style="font-size: 0.85em; margin-top: 0.15rem;">
+              {% for other in person_labels if other != contributor %}Only from {{ contributor }} &mdash; ask {{ other }} to mark a matching category as Shared.{% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td class="num">
+            {{ "%.2f"|format(r.planned) }}
+            <div class="muted" style="font-size: 0.85em;">
+              {% for label in person_labels %}{{ label }}: {{ "%.2f"|format(r.by_person[label].planned) }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+            </div>
+          </td>
+          <td class="num">
+            {{ "%.2f"|format(r.actual) }}
+            <div class="muted" style="font-size: 0.85em;">
+              {% for label in person_labels %}{{ label }}: {{ "%.2f"|format(r.by_person[label].actual) }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+            </div>
+          </td>
+          <td class="num">{{ "%+.2f"|format(r.variance) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th class="num">{{ "%.2f"|format(total_planned) }}</th>
+          <th class="num">{{ "%.2f"|format(total_actual) }}</th>
+          <th class="num">{{ "%+.2f"|format(total_actual - total_planned) }}</th>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
+  </div>
+  {% endif %}
+{% endblock %}

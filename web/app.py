@@ -17,6 +17,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from common import categories as categories_module
 from common import gcp_info
 from common import google_auth
+from common import household as household_module
 from common import sheets_client
 from common import usage_tracker
 from common import users as users_module
@@ -534,6 +535,12 @@ def create_app() -> Flask:
             claude_model=settings.CLAUDE_MODEL,
         )
 
+    @app.route("/household")
+    def household_page():
+        month = request.args.get("month", current_month())
+        summary = household_module.compute_household_summary(month, session.get("user_email", ""))
+        return render_template("household.html", month=month, **summary)
+
     @app.route("/api/insights")
     def api_insights():
         if _llm_rate_limited("insights"):
@@ -671,6 +678,8 @@ def create_app() -> Flask:
         type_ = request.form.get("type") or None
         notes = request.form.get("notes")
         group = request.form.get("group")
+        shared = "true" in request.form.getlist("shared")
+        household_category = request.form.get("household_category")
         if not name:
             return _status_redirect("categories_page", "No category specified.", status="error")
         try:
@@ -678,7 +687,8 @@ def create_app() -> Flask:
                 categories_module.rename_category(name, new_name)
                 name = new_name  # subsequent updates target the row under its new name
             categories_module.rename_or_retype_category(
-                name, new_type=type_, new_notes=notes, new_group=group
+                name, new_type=type_, new_notes=notes, new_group=group,
+                new_shared=shared, new_household_category=household_category,
             )
         except ValueError as e:
             return _status_redirect("categories_page", str(e), status="error")

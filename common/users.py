@@ -45,3 +45,7 @@ def get_user_by_telegram_id(telegram_id: str) -> Optional[dict]:
 
 def any_users_configured() -> bool:
     return bool(_USERS)
+
+
+def get_all_users() -> list[dict]:
+    return list(_USERS)

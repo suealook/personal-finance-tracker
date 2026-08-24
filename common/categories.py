@@ -41,9 +41,13 @@ def add_category(name: str, type_: str, notes: str = "", group: str = ""):
 
 
 def rename_or_retype_category(
-    name: str, new_type: str = None, new_notes: str = None, new_group: str = None
+    name: str, new_type: str = None, new_notes: str = None, new_group: str = None,
+    new_shared: bool = None, new_household_category: str = None,
 ):
-    sheets_client.update_category(name, new_type=new_type, new_notes=new_notes, new_group=new_group)
+    sheets_client.update_category(
+        name, new_type=new_type, new_notes=new_notes, new_group=new_group,
+        new_shared=new_shared, new_household_category=new_household_category,
+    )
 
 
 def set_groups_batch(group_changes: dict):
