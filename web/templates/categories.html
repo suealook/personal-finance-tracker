@@ -7,7 +7,7 @@
     Edit a field and hit Save (lights up once something's changed) to update it.
   </p>
   <p class="muted">
-    Check "Shared" on categories you split as a household (rent, groceries, utilities) — they'll
+    Click "Personal" to mark a category shared with your household (rent, groceries, utilities) — it'll
     combine with your partner's on the <a href="{{ url_for('household_page') }}">Household</a> page.
     Renaming a shared category later changes what it matches — the "Shared as" name stays as typed.
   </p>
@@ -86,15 +86,26 @@
           </select>
         </td>
         <td data-label="Shared">
-          <input type="hidden" name="shared" value="false" form="edit-{{ loop.index }}">
-          <input type="checkbox" name="shared" value="true" form="edit-{{ loop.index }}"
-                 class="editable-field shared-checkbox" {% if (c.Shared|upper) == 'TRUE' %}checked{% endif %}>
+          {% if (c.Shared|upper) == 'TRUE' %}
+          <form method="post" action="{{ url_for('categories_mark_personal') }}">
+            <input type="hidden" name="name" value="{{ c.Category }}">
+            <button type="submit" class="status-pill status-shared" title="Shared with your household — click to make personal">Shared</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('categories_mark_shared') }}">
+            <input type="hidden" name="name" value="{{ c.Category }}">
+            <button type="submit" class="status-pill status-personal" title="Personal — click to share with your household">Personal</button>
+          </form>
+          {% endif %}
         </td>
         <td data-label="Shared as">
+          {% if (c.Shared|upper) == 'TRUE' %}
           <input type="text" name="household_category" value="{{ c.HouseholdCategory }}" form="edit-{{ loop.index }}"
                  class="editable-field household-category-input" placeholder="Same name as above"
-                 title="Only matters if Shared is checked. Type the exact name your partner uses if it's different, so your amounts combine on the Household page — ask them what they typed."
-                 {% if (c.Shared|upper) != 'TRUE' %}style="display: none;"{% endif %}>
+                 title="Type the exact name your partner uses if it's different, so your amounts combine on the Household page — ask them what they typed.">
+          {% else %}
+          <span class="muted">&mdash;</span>
+          {% endif %}
         </td>
         <td data-label="Status">
           {% if c.Active == 'TRUE' %}
@@ -184,19 +195,6 @@
     document.querySelectorAll('.type-select').forEach(function (sel) {
       sel.addEventListener('change', function () {
         sel.className = 'editable-field type-select type-' + sel.value.toLowerCase().replace(/\s+/g, '-');
-      });
-    });
-
-    // "Shared as" only matters once Shared is checked -- hide it otherwise so
-    // an unshared row doesn't show a pointless extra text box. The typed
-    // value is preserved (just hidden, never cleared) if unchecked then
-    // rechecked.
-    document.querySelectorAll('.shared-checkbox').forEach(function (checkbox) {
-      var row = checkbox.closest('tr');
-      var householdInput = row ? row.querySelector('.household-category-input') : null;
-      if (!householdInput) return;
-      checkbox.addEventListener('change', function () {
-        householdInput.style.display = checkbox.checked ? '' : 'none';
       });
     });
   })();

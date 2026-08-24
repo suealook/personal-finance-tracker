@@ -42,12 +42,20 @@ def add_category(name: str, type_: str, notes: str = "", group: str = ""):
 
 def rename_or_retype_category(
     name: str, new_type: str = None, new_notes: str = None, new_group: str = None,
-    new_shared: bool = None, new_household_category: str = None,
+    new_household_category: str = None,
 ):
     sheets_client.update_category(
         name, new_type=new_type, new_notes=new_notes, new_group=new_group,
-        new_shared=new_shared, new_household_category=new_household_category,
+        new_household_category=new_household_category,
     )
+
+
+def mark_category_shared(name: str):
+    sheets_client.set_category_shared(name, shared=True)
+
+
+def mark_category_personal(name: str):
+    sheets_client.set_category_shared(name, shared=False)
 
 
 def set_groups_batch(group_changes: dict):

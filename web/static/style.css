@@ -762,13 +762,16 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 .data-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .data-table td input:not(.calc-input), .data-table td select { width: 100%; min-width: 0; }
 
-.categories-table th:nth-child(1) { width: 9%; }
-.categories-table th:nth-child(2) { width: 17%; }
-.categories-table th:nth-child(3) { width: 15%; }
-.categories-table th:nth-child(4) { width: 13%; }
-.categories-table th:nth-child(5) { width: 12%; }
-.categories-table th:nth-child(6) { width: 19%; }
-.categories-table th:nth-child(7) { width: 15%; }
+/* Select, Category, Group, Type, Shared, Shared as, Status, Notes, Actions */
+.categories-table th:nth-child(1) { width: 8%; }
+.categories-table th:nth-child(2) { width: 15%; }
+.categories-table th:nth-child(3) { width: 12%; }
+.categories-table th:nth-child(4) { width: 11%; }
+.categories-table th:nth-child(5) { width: 6%; }
+.categories-table th:nth-child(6) { width: 12%; }
+.categories-table th:nth-child(7) { width: 10%; }
+.categories-table th:nth-child(8) { width: 14%; }
+.categories-table th:nth-child(9) { width: 12%; }
 
 .budgets-table th:nth-child(1) { width: 22%; }
 .budgets-table th:nth-child(2) { width: 18%; }
@@ -853,6 +856,10 @@ fieldset { padding: 1rem 1.25rem; margin-bottom: 1rem; }
 .status-pill.status-inactive { background: color-mix(in srgb, var(--muted) 18%, var(--panel-strong)); color: var(--muted); }
 .status-pill.status-inactive:hover { background: color-mix(in srgb, var(--muted) 30%, var(--panel-strong)); }
 .status-pill.readonly { cursor: default; }
+.status-pill.status-shared { background: color-mix(in srgb, var(--accent) 16%, var(--panel-strong)); color: var(--accent); }
+.status-pill.status-shared:hover { background: color-mix(in srgb, var(--accent) 28%, var(--panel-strong)); }
+.status-pill.status-personal { background: color-mix(in srgb, var(--muted) 18%, var(--panel-strong)); color: var(--muted); }
+.status-pill.status-personal:hover { background: color-mix(in srgb, var(--muted) 30%, var(--panel-strong)); }
 
 .save-btn { opacity: 0.4; background: var(--panel-strong); color: var(--muted); box-shadow: none; }
 .save-btn.dirty { opacity: 1; background: var(--accent); color: white; }

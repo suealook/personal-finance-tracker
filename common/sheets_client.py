@@ -337,7 +337,6 @@ def update_category(
     new_type: Optional[str] = None,
     new_notes: Optional[str] = None,
     new_group: Optional[str] = None,
-    new_shared: Optional[bool] = None,
     new_household_category: Optional[str] = None,
 ):
     tab = SheetTab(TAB_CATEGORIES)
@@ -350,10 +349,20 @@ def update_category(
         tab.update_cell(row, "Notes", new_notes)
     if new_group is not None:
         tab.update_cell(row, "Group", new_group)
-    if new_shared is not None:
-        tab.update_cell(row, "Shared", "TRUE" if new_shared else "FALSE")
     if new_household_category is not None:
         tab.update_cell(row, "HouseholdCategory", new_household_category)
+    invalidate_category_cache()
+
+
+def set_category_shared(name: str, shared: bool):
+    """Instant one-click toggle, same shape as set_category_active above --
+    Shared is a simple on/off flag, not a multi-field edit, so it doesn't
+    belong on the deferred Save-button path with Group/Type/Notes."""
+    tab = SheetTab(TAB_CATEGORIES)
+    row = tab.find_row_index(lambda r: r.get("Category") == name)
+    if row is None:
+        raise ValueError(f"Category {name!r} not found")
+    tab.update_cell(row, "Shared", "TRUE" if shared else "FALSE")
     invalidate_category_cache()
 
 

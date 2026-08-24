@@ -678,7 +678,6 @@ def create_app() -> Flask:
         type_ = request.form.get("type") or None
         notes = request.form.get("notes")
         group = request.form.get("group")
-        shared = "true" in request.form.getlist("shared")
         household_category = request.form.get("household_category")
         if not name:
             return _status_redirect("categories_page", "No category specified.", status="error")
@@ -688,7 +687,7 @@ def create_app() -> Flask:
                 name = new_name  # subsequent updates target the row under its new name
             categories_module.rename_or_retype_category(
                 name, new_type=type_, new_notes=notes, new_group=group,
-                new_shared=shared, new_household_category=household_category,
+                new_household_category=household_category,
             )
         except ValueError as e:
             return _status_redirect("categories_page", str(e), status="error")
@@ -744,6 +743,30 @@ def create_app() -> Flask:
             app.logger.exception("categories_activate failed for name=%s", name)
             return _status_redirect("categories_page", "Could not activate — please try again.", status="error")
         return _status_redirect("categories_page", f'Activated "{name}".')
+
+    @app.route("/categories/mark_shared", methods=["POST"])
+    def categories_mark_shared():
+        name = request.form.get("name", "")
+        if not name:
+            return _status_redirect("categories_page", "No category specified.", status="error")
+        try:
+            categories_module.mark_category_shared(name)
+        except Exception:
+            app.logger.exception("categories_mark_shared failed for name=%s", name)
+            return _status_redirect("categories_page", "Could not mark as shared — please try again.", status="error")
+        return _status_redirect("categories_page", f'"{name}" is now shared.')
+
+    @app.route("/categories/mark_personal", methods=["POST"])
+    def categories_mark_personal():
+        name = request.form.get("name", "")
+        if not name:
+            return _status_redirect("categories_page", "No category specified.", status="error")
+        try:
+            categories_module.mark_category_personal(name)
+        except Exception:
+            app.logger.exception("categories_mark_personal failed for name=%s", name)
+            return _status_redirect("categories_page", "Could not mark as personal — please try again.", status="error")
+        return _status_redirect("categories_page", f'"{name}" is now personal.')
 
     @app.route("/categories/remove", methods=["POST"])
     def categories_remove():
