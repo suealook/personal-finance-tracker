@@ -3,17 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in — Finance Tracker</title>
+  <title>Sign in — Steve Personal Finance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
-  <meta name="theme-color" content="#080b13">
+  <meta name="theme-color" content="#05070f">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
 </head>
 <body>
   <div class="login-wrap">
-    <form class="card login-card" method="post" action="{{ url_for('auth_google_start') }}"
+    <div class="bttf-stars" aria-hidden="true"></div>
+    <div class="bttf-grid" aria-hidden="true"></div>
+
+    <div class="bttf-hero">
+      <div class="bttf-eyebrow">Welcome to</div>
+      <div class="bttf-line1">Steve</div>
+      <div class="bttf-line2">Personal Finance</div>
+      <div class="bttf-trail" aria-label="site">
+        <span style="--o: 1">S</span><span style="--o: 1">I</span><span style="--o: 1">T</span><span style="--o: 1">E</span><span style="--o: .75">E</span><span style="--o: .55">E</span><span style="--o: .35">E</span><span style="--o: .18">E</span>
+      </div>
+      <p class="bttf-tagline">Roads? Where we're going, we don't need roads.</p>
+    </div>
+
+    <form class="login-card" method="post" action="{{ url_for('auth_google_start') }}"
           onsubmit="this.querySelector('button[type=submit]').disabled = true;">
-      <h1 class="login-title">Finance Tracker</h1>
-      <p class="muted login-subtitle">Sign in to continue</p>
+      <h1 class="login-title">Sign in to continue</h1>
 
       {% if error %}
       <p class="login-error">{{ error }}</p>

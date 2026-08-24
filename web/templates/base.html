@@ -4,12 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Finance Tracker{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700&family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-  <meta name="theme-color" content="#080b13">
+  <meta name="theme-color" content="#05070f">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
 </head>
 <body>
+  <canvas id="bg-fx" aria-hidden="true"></canvas>
   <div id="toast-stack" aria-live="polite"></div>
   <nav>
     <div class="brand">
@@ -47,6 +51,7 @@
     </div>
   </nav>
   <script src="{{ url_for('static', filename='tour.js', v=asset_version) }}"></script>
+  <script src="{{ url_for('static', filename='fx.js', v=asset_version) }}" defer></script>
   <main>
     {% block content %}{% endblock %}
   </main>

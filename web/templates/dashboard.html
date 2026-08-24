@@ -8,6 +8,34 @@
     </form>
   </div>
 
+  <div class="card" id="quick-log-card">
+    <h2>Quick log</h2>
+    <form id="quick-log-form" class="quick-log-form">
+      <input type="text" id="quick-log-input" class="quick-log-input"
+             placeholder="Try &quot;coffee 120&quot; or &quot;salary 50000 yesterday&quot;" autocomplete="off">
+      <button type="submit" id="quick-log-submit">Log it</button>
+    </form>
+    <div class="quick-log-hint">
+      <span class="muted">Same phrasing as the Telegram bot — what it was, how much, when.</span>
+      <button type="button" class="quick-log-mode-btn" id="quick-log-mode-toggle">Enter manually instead</button>
+    </div>
+    <form id="quick-log-manual" class="quick-log-manual">
+      <select name="category" required>
+        <option value="" disabled selected>Category&hellip;</option>
+        {% for type_name, names in quick_log_categories %}
+        <optgroup label="{{ type_name }}">
+          {% for n in names %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select>
+      <input type="number" name="amount" step="0.01" min="0.01" inputmode="decimal" placeholder="Amount" required>
+      <input type="date" name="date" value="{{ today }}">
+      <input type="text" name="note" placeholder="Note (optional)">
+      <button type="submit">Log</button>
+    </form>
+    <div id="quick-log-result" class="quick-log-result" role="status"></div>
+  </div>
+
   <div class="stat-grid">
     <div class="card stat-tile">
       <button type="button" id="income-mask-toggle" class="mask-toggle-btn" title="Hide income" aria-label="Hide income" aria-pressed="false">
@@ -236,6 +264,166 @@
 
   <script>
   (function () {
+    // Quick log: natural-text parse (same brain as the Telegram bot) with a
+    // structured manual fallback. Result renders as a persistent chip with
+    // Undo — not a vanishing toast — because money entries deserve a second
+    // look. All content is set via textContent, never innerHTML.
+    var form = document.getElementById('quick-log-form');
+    var input = document.getElementById('quick-log-input');
+    var submitBtn = document.getElementById('quick-log-submit');
+    var manualForm = document.getElementById('quick-log-manual');
+    var modeToggle = document.getElementById('quick-log-mode-toggle');
+    var result = document.getElementById('quick-log-result');
+
+    modeToggle.addEventListener('click', function () {
+      var open = manualForm.classList.toggle('open');
+      modeToggle.textContent = open ? 'Hide manual entry' : 'Enter manually instead';
+    });
+
+    function post(url, data) {
+      return fetch(url, { method: 'POST', body: new URLSearchParams(data) }).then(function (res) {
+        if (res.status === 401) { window.location.href = '/login'; throw new Error('unauthenticated'); }
+        return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+      });
+    }
+
+    function clearResult() {
+      result.className = 'quick-log-result';
+      result.textContent = '';
+    }
+
+    function chip(kind) {
+      clearResult();
+      result.classList.add('show', kind);
+      return result;
+    }
+
+    function addText(el, text, cls) {
+      var span = document.createElement('span');
+      if (cls) span.className = cls;
+      span.textContent = text;
+      el.appendChild(span);
+      return span;
+    }
+
+    function addActions(el) {
+      var actions = document.createElement('span');
+      actions.className = 'actions';
+      el.appendChild(actions);
+      return actions;
+    }
+
+    function addButton(parent, label, ghost, onClick) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      if (ghost) btn.className = 'btn-ghost';
+      btn.textContent = label;
+      btn.addEventListener('click', onClick);
+      parent.appendChild(btn);
+      return btn;
+    }
+
+    function txnLabel(txn) {
+      var note = txn.note ? ' (' + txn.note + ')' : '';
+      return Number(txn.amount).toFixed(2) + ' — ' + txn.category + note + ' on ' + txn.date;
+    }
+
+    function showLogged(txn) {
+      var el = chip('ok');
+      addText(el, 'Logged: ');
+      addText(el, txnLabel(txn), 'txn');
+      var actions = addActions(el);
+      var undoBtn = addButton(actions, 'Undo', true, function () {
+        undoBtn.disabled = true;
+        post('/api/quick_log/undo', { transaction_id: txn.transaction_id })
+          .then(function (r) {
+            if (r.ok) {
+              var done = chip('ok');
+              addText(done, 'Undone: ');
+              addText(done, txnLabel(txn), 'txn');
+            } else {
+              showError(r.body.error || 'Could not undo.');
+            }
+          })
+          .catch(function () {});
+      });
+      addButton(actions, 'Refresh totals', true, function () { window.location.reload(); });
+    }
+
+    function showError(message) {
+      addText(chip('err'), message);
+    }
+
+    function showNeedsCategory(data) {
+      var el = chip('ask');
+      addText(el, '"' + data.parsed.category + '" is a new category (' + data.parsed.category_type + '). Create it and log ');
+      addText(el, txnLabel(data.parsed), 'txn');
+      addText(el, '?');
+      var actions = addActions(el);
+      addButton(actions, 'Create & log', false, function () {
+        post('/api/quick_log/confirm', {
+          raw_row_index: data.raw_row_index,
+          date: data.parsed.date,
+          amount: data.parsed.amount,
+          category: data.parsed.category,
+          category_type: data.parsed.category_type,
+          note: data.parsed.note,
+        }).then(function (r) {
+          if (r.ok) showLogged(r.body.txn);
+          else showError(r.body.error || 'Could not log it.');
+        }).catch(function () {});
+      });
+      addButton(actions, 'Cancel', true, function () {
+        post('/api/quick_log/cancel', { raw_row_index: data.raw_row_index }).catch(function () {});
+        clearResult();
+      });
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var text = input.value.trim();
+      if (!text) { input.focus(); return; }
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Logging…';
+      clearResult();
+      post('/api/quick_log', { mode: 'text', text: text })
+        .then(function (r) {
+          if (!r.ok) { showError(r.body.error || 'Could not log that.'); return; }
+          if (r.body.status === 'needs_category') { showNeedsCategory(r.body); return; }
+          input.value = '';
+          showLogged(r.body.txn);
+        })
+        .catch(function () { showError('Network problem — try again.'); })
+        .finally(function () {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Log it';
+        });
+    });
+
+    manualForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var fields = new FormData(manualForm);
+      var btn = manualForm.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      clearResult();
+      post('/api/quick_log', {
+        mode: 'manual',
+        category: fields.get('category') || '',
+        amount: fields.get('amount') || '',
+        date: fields.get('date') || '',
+        note: fields.get('note') || '',
+      })
+        .then(function (r) {
+          if (!r.ok) { showError(r.body.error || 'Could not log that.'); return; }
+          manualForm.reset();
+          showLogged(r.body.txn);
+        })
+        .catch(function () { showError('Network problem — try again.'); })
+        .finally(function () { btn.disabled = false; });
+    });
+  })();
+
+  (function () {
     var telegramBotLink = {{ telegram_bot_link|tojson }};
 
     // Miller's Law: capped near 7±2 steps, and each step's own text stays to
@@ -245,6 +433,7 @@
       { selector: '.brand', title: 'Welcome to Finance Tracker', text: "Quick tour of what's on this page — click Next, or Skip if you'd rather explore on your own." },
       { selector: '.nav-links', title: 'Get around', text: 'Dashboard, Budgets, Categories, Reports, and Export — everything else lives behind these links.' },
       { selector: '#month-picker-form', title: 'Pick a month', text: 'Every number on this page is scoped to one month. Switch months here to look back at past activity.' },
+      { selector: '#quick-log-card', title: 'Log from right here', text: 'Type it like you\'d text the bot — "coffee 120" — or switch to manual entry. Undo appears right after it saves.' },
       { selector: '.stat-grid', title: 'Your month at a glance', text: 'Income, expenses, net savings, and how much of your budget you’ve used so far.' },
       { selector: '#chart-card', title: 'Planned vs. actual', text: 'Compare what you budgeted against what you actually spent, category by category.' },
       { selector: '#recent-activity-card', title: 'Recent activity', text: 'Transactions you log via the Telegram bot show up here automatically.' },

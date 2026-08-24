@@ -67,27 +67,6 @@ async def _finalize_transaction(parsed: dict, raw_row_index: int, msg_id: str, r
     return row
 
 
-def _resolve_category(parsed: dict, active_categories: list[str]) -> bool:
-    """Server-side authority on whether `category` is actually new, instead
-    of trusting the model's own category_is_new flag. Claude can judge a
-    category "close enough" to an existing one and report category_is_new
-    as false while still returning a string that doesn't exactly match any
-    real category — e.g. "Salary" when the real category is "Fixed Income",
-    or "fixed income" instead of "Fixed Income". Either way silently
-    orphans the transaction from every Type-based rollup (dashboard
-    income/spend split, budgets, variance reports) since none of them can
-    find a category by that exact string — it just gets miscounted as an
-    ordinary expense. Normalizes parsed["category"] to the existing
-    category's exact casing on a case-insensitive match; returns whether
-    the category is genuinely new."""
-    category = parsed.get("category", "")
-    for existing in active_categories:
-        if existing.lower() == category.lower():
-            parsed["category"] = existing
-            return False
-    return True
-
-
 async def _process_parsed(
     parsed: dict,
     raw_row_index: int,
@@ -99,7 +78,7 @@ async def _process_parsed(
     """Shared continuation once a message or photo has been parsed into a
     candidate transaction: confirm a brand-new category before writing
     anything, otherwise finalize immediately."""
-    if _resolve_category(parsed, active_categories):
+    if categories_module.resolve_category(parsed, active_categories):
         context.chat_data["pending"] = {
             "parsed": parsed,
             "raw_row_index": raw_row_index,

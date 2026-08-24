@@ -18,6 +18,9 @@
 }
 
 :443 {
+	# Compress responses (HTML/CSS/JS shrink ~70-80%) — matters doubly here
+	# since the users are far from the VM's region.
+	encode zstd gzip
 	tls /etc/caddy/tls/cert.pem /etc/caddy/tls/key.pem
 	reverse_proxy 127.0.0.1:5000
 }

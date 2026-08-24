@@ -29,6 +29,27 @@ def get_active_categories() -> list[str]:
     return [c["Category"] for c in get_active_category_records()]
 
 
+def resolve_category(parsed: dict, active_categories: list[str]) -> bool:
+    """Server-side authority on whether a parsed transaction's category is
+    actually new, instead of trusting the model's own category_is_new flag.
+    Claude can judge a category "close enough" to an existing one and report
+    category_is_new as false while still returning a string that doesn't
+    exactly match any real category — e.g. "Salary" when the real category
+    is "Fixed Income", or "fixed income" instead of "Fixed Income". Either
+    way silently orphans the transaction from every Type-based rollup
+    (dashboard income/spend split, budgets, variance reports) since none of
+    them can find a category by that exact string. Normalizes
+    parsed["category"] to the existing category's exact casing on a
+    case-insensitive match; returns whether the category is genuinely new.
+    Shared by the Telegram bot and the web quick-log."""
+    category = parsed.get("category", "")
+    for existing in active_categories:
+        if existing.lower() == category.lower():
+            parsed["category"] = existing
+            return False
+    return True
+
+
 def add_category(name: str, type_: str, notes: str = "", group: str = ""):
     name = name.strip()
     type_ = type_.strip().title()

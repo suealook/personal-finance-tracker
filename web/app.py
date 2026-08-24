@@ -4,6 +4,7 @@ import io
 import secrets
 import threading
 import time
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -21,7 +22,8 @@ from common import household as household_module
 from common import sheets_client
 from common import usage_tracker
 from common import users as users_module
-from common.dateutil_helpers import current_month, last_n_months, month_bounds, previous_month, year_bounds
+from common import llm_parse
+from common.dateutil_helpers import current_month, last_n_months, month_bounds, now_str, previous_month, today_str, year_bounds
 from common.heartbeat import heartbeat_age_seconds
 from common.llm_analysis import compute_variance, dashboard_insights, generate_and_save_report
 from config import settings
@@ -282,13 +284,21 @@ def create_app() -> Flask:
 
     # Cache-busting for static assets: without this, style.css is served from a
     # fixed URL forever, so a browser that already cached an old copy has no
-    # signal to ever refetch it after an update. Hashing the file content means
-    # the URL only changes when the CSS actually does.
-    css_path = Path(app.static_folder) / "style.css"
+    # signal to ever refetch it after an update. The hash covers every
+    # versioned text asset (css + js), so a change to any one of them busts
+    # them all — style.css alone missed js-only updates.
     try:
-        app.jinja_env.globals["asset_version"] = hashlib.sha256(css_path.read_bytes()).hexdigest()[:10]
+        digest = hashlib.sha256()
+        for name in ("style.css", "tour.js", "fx.js"):
+            digest.update((Path(app.static_folder) / name).read_bytes())
+        app.jinja_env.globals["asset_version"] = digest.hexdigest()[:10]
     except OSError:
         app.jinja_env.globals["asset_version"] = str(int(WEB_STARTED_AT.timestamp()))
+
+    # Static responses carry the version in their URL (v=<hash>), so browsers
+    # can safely cache them for a long time — the URL itself changes when the
+    # content does. Cuts repeat-visit weight to just the HTML.
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=7)
 
     # Just whether Google Sign-In is configured, never any secret — lets
     # base.html show/hide the Log out button without templates touching
@@ -456,6 +466,17 @@ def create_app() -> Flask:
         cat_types = {c["Category"]: c["Type"] for c in cats}
         cat_group = {c["Category"]: c.get("Group", "") for c in cats}
 
+        # Manual-mode quick-log picker: active categories grouped by Type, the
+        # canonical four types first, then any custom types (e.g. "Fixed
+        # Expense") in the order they appear.
+        quick_log_groups: dict[str, list[str]] = {}
+        for c in cats:
+            if str(c.get("Active", "")).strip().upper() == "TRUE":
+                quick_log_groups.setdefault(c.get("Type") or "Expense", []).append(c["Category"])
+        type_order = ["Expense", "Income", "Savings", "Debt"]
+        quick_log_categories = [(t, quick_log_groups[t]) for t in type_order if t in quick_log_groups]
+        quick_log_categories += [(t, names) for t, names in quick_log_groups.items() if t not in type_order]
+
         rows = compute_variance(month, actual=txns_by_month.get(month, []))
         total_planned = sum(r["planned"] for r in rows)
         total_actual = sum(r["actual"] for r in rows)
@@ -533,7 +554,176 @@ def create_app() -> Flask:
             recent_txns=recent_txns,
             budget_limits=budget_limits,
             claude_model=settings.CLAUDE_MODEL,
+            quick_log_categories=quick_log_categories,
+            today=today_str(),
         )
+
+    def _quick_log_write(parsed: dict, raw_row_index: int = 0) -> dict:
+        """Writes a validated quick-log transaction to the sheet and links the
+        raw-log row when there is one (text mode; manual mode has no raw
+        row). Mirrors the bot's _write_transaction shape, Source='web'."""
+        txn_id = str(uuid.uuid4())
+        row = {
+            "TransactionID": txn_id,
+            "Date": parsed["date"],
+            "Amount": parsed["amount"],
+            "Category": parsed["category"],
+            "Note": parsed.get("note", ""),
+            "Source": "web",
+            "LoggedAt": now_str(),
+            "TelegramMsgID": "",
+            "Status": "active",
+        }
+        sheets_client.append_transaction(row)
+        if raw_row_index:
+            sheets_client.update_raw_log(raw_row_index, "parsed", txn_id)
+        return row
+
+    def _quick_log_validate(amount_raw, date_raw) -> tuple[Optional[float], Optional[str], Optional[str]]:
+        """Returns (amount, date, error). Amount must be a positive number;
+        date must be YYYY-MM-DD (defaults to today when blank)."""
+        try:
+            amount = float(amount_raw)
+        except (TypeError, ValueError):
+            return None, None, "Amount must be a number."
+        if amount <= 0:
+            return None, None, "Amount must be greater than zero."
+        date_value = (date_raw or "").strip() or today_str()
+        try:
+            datetime.strptime(date_value, "%Y-%m-%d")
+        except ValueError:
+            return None, None, "Date must be YYYY-MM-DD."
+        return amount, date_value, None
+
+    def _txn_payload(row: dict) -> dict:
+        return {
+            "transaction_id": row["TransactionID"],
+            "date": row["Date"],
+            "amount": row["Amount"],
+            "category": row["Category"],
+            "note": row.get("Note", ""),
+        }
+
+    @app.route("/api/quick_log", methods=["POST"])
+    def api_quick_log():
+        mode = request.form.get("mode", "text")
+
+        if mode == "manual":
+            category_raw = request.form.get("category", "").strip()
+            amount, date_value, err = _quick_log_validate(
+                request.form.get("amount"), request.form.get("date")
+            )
+            if err:
+                return jsonify({"error": err}), 400
+            active = categories_module.get_active_categories()
+            match = next((c for c in active if c.lower() == category_raw.lower()), None)
+            if match is None:
+                return jsonify({"error": f"'{category_raw}' isn't an active category."}), 400
+            row = _quick_log_write(
+                {"date": date_value, "amount": amount, "category": match,
+                 "note": request.form.get("note", "").strip()}
+            )
+            return jsonify({"status": "logged", "txn": _txn_payload(row)})
+
+        text = request.form.get("text", "").strip()
+        if not text:
+            return jsonify({"error": "Type something first, e.g. \"coffee 120\"."}), 400
+        if _llm_rate_limited("quick_log"):
+            return jsonify({"error": "One moment — try again in a few seconds."}), 429
+
+        raw_row_index = sheets_client.append_raw_log(
+            {
+                "Timestamp": now_str(),
+                "TelegramUserID": "web",
+                "TelegramUsername": session.get("user_email", ""),
+                "RawText": text,
+                "ParseStatus": "pending",
+                "LinkedTransactionID": "",
+            }
+        )
+        try:
+            active_categories = categories_module.get_active_categories()
+            parsed = llm_parse.parse_transaction(text, active_categories)
+        except Exception:
+            app.logger.exception("quick_log parse failed for text=%r", text)
+            sheets_client.update_raw_log(raw_row_index, "failed")
+            return jsonify({"error": "Couldn't parse that — try rephrasing, e.g. \"12.50 coffee\"."}), 422
+
+        amount, date_value, err = _quick_log_validate(parsed.get("amount"), parsed.get("date"))
+        if err:
+            sheets_client.update_raw_log(raw_row_index, "failed")
+            return jsonify({"error": "Couldn't parse that — try rephrasing, e.g. \"12.50 coffee\"."}), 422
+        parsed["amount"] = amount
+        parsed["date"] = date_value
+
+        if categories_module.resolve_category(parsed, active_categories):
+            # Brand-new category: nothing written yet — the raw-log row stays
+            # pending while the browser asks the user to confirm creating it.
+            return jsonify(
+                {
+                    "status": "needs_category",
+                    "raw_row_index": raw_row_index,
+                    "parsed": {
+                        "date": parsed["date"],
+                        "amount": parsed["amount"],
+                        "category": parsed["category"],
+                        "category_type": parsed.get("category_type", "Expense"),
+                        "note": parsed.get("note", ""),
+                    },
+                }
+            )
+
+        row = _quick_log_write(parsed, raw_row_index)
+        return jsonify({"status": "logged", "txn": _txn_payload(row)})
+
+    @app.route("/api/quick_log/confirm", methods=["POST"])
+    def api_quick_log_confirm():
+        category = request.form.get("category", "").strip()
+        category_type = request.form.get("category_type", "Expense").strip() or "Expense"
+        amount, date_value, err = _quick_log_validate(
+            request.form.get("amount"), request.form.get("date")
+        )
+        if err or not category:
+            return jsonify({"error": err or "Category is required."}), 400
+        try:
+            raw_row_index = int(request.form.get("raw_row_index", 0))
+        except (TypeError, ValueError):
+            raw_row_index = 0
+        try:
+            categories_module.add_category(category, category_type)
+        except ValueError:
+            pass  # already exists (race with another entry point) — fine, just use it
+        row = _quick_log_write(
+            {"date": date_value, "amount": amount, "category": category,
+             "note": request.form.get("note", "").strip()},
+            raw_row_index if raw_row_index > 1 else 0,
+        )
+        return jsonify({"status": "logged", "txn": _txn_payload(row)})
+
+    @app.route("/api/quick_log/cancel", methods=["POST"])
+    def api_quick_log_cancel():
+        try:
+            raw_row_index = int(request.form.get("raw_row_index", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Bad raw_row_index."}), 400
+        if raw_row_index > 1:
+            sheets_client.update_raw_log(raw_row_index, "failed")
+        return jsonify({"status": "cancelled"})
+
+    @app.route("/api/quick_log/undo", methods=["POST"])
+    def api_quick_log_undo():
+        transaction_id = request.form.get("transaction_id", "").strip()
+        if not transaction_id:
+            return jsonify({"error": "No transaction specified."}), 400
+        try:
+            txn = sheets_client.get_transaction_by_id(transaction_id)
+            if not txn or txn.get("Status") != "active":
+                return jsonify({"error": "Already undone (or not found)."}), 404
+            sheets_client.undo_transaction(txn["_row"])
+        except Exception:
+            app.logger.exception("quick_log undo failed for transaction_id=%s", transaction_id)
+            return jsonify({"error": "Couldn't undo that one — please try again."}), 500
+        return jsonify({"status": "undone"})
 
     @app.route("/household")
     def household_page():
